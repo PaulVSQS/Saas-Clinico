@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "b1kn4nlzZME=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\paule\\OneDrive\\Escritorio\\TRABAJO\\Saas Clinico\\Solucion\\src\\ClinicaSaaS.Infrastructure\\ClinicaSaaS.Infrastructure.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\paule\\.nuget\\packages\\automapper\\14.0.0\\automapper.14.0.0.nupkg.sha512",
+    "C:\\Users\\paule\\.nuget\\packages\\fluentvalidation\\11.11.0\\fluentvalidation.11.11.0.nupkg.sha512",
+    "C:\\Users\\paule\\.nuget\\packages\\mediatr\\12.4.1\\mediatr.12.4.1.nupkg.sha512",
+    "C:\\Users\\paule\\.nuget\\packages\\mediatr.contracts\\2.0.1\\mediatr.contracts.2.0.1.nupkg.sha512",
+    "C:\\Users\\paule\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.0\\microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\paule\\.nuget\\packages\\microsoft.extensions.options\\8.0.0\\microsoft.extensions.options.8.0.0.nupkg.sha512",
+    "C:\\Users\\paule\\.nuget\\packages\\microsoft.extensions.primitives\\8.0.0\\microsoft.extensions.primitives.8.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

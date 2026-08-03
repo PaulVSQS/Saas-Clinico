@@ -1,0 +1,8 @@
+{
+  "ClinicaSaaS.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\paule\\OneDrive\\Escritorio\\TRABAJO\\Saas Clinico\\Solucion\\src\\ClinicaSaaS.Application",
+  "ClinicaSaaS.Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\paule\\OneDrive\\Escritorio\\TRABAJO\\Saas Clinico\\Solucion\\src\\ClinicaSaaS.Domain",
+  "ClinicaSaaS.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\paule\\OneDrive\\Escritorio\\TRABAJO\\Saas Clinico\\Solucion\\src\\ClinicaSaaS.Infrastructure",
+  "ClinicaSaaS.Persistence, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\paule\\OneDrive\\Escritorio\\TRABAJO\\Saas Clinico\\Solucion\\src\\ClinicaSaaS.Persistence",
+  "ClinicaSaaS.SharedKernel, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\paule\\OneDrive\\Escritorio\\TRABAJO\\Saas Clinico\\Solucion\\src\\ClinicaSaaS.SharedKernel",
+  "ClinicaSaaS.Web, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "C:\\Users\\paule\\OneDrive\\Escritorio\\TRABAJO\\Saas Clinico\\Solucion\\src\\ClinicaSaaS.Web"
+}
