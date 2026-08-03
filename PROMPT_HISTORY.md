@@ -29,3 +29,33 @@
 - Añadí los cambios de los archivos iniciales al staging area de Git.
 - Realicé el commit y push de los cambios al repositorio remoto.
 ---
+### Prompt Record
+**User Prompt:**
+> Documentacion
+> creame un archivo con las 9 etapas que son estas 
+> ...
+> una ves echo eso me generaras toda la documentacion de lo que hemos echo hasta ahora y en que etapa estamos y cual completamos
+
+**Action Taken / Agent Summary:**
+- Creé el archivo `fases-del-proyecto.md` en la carpeta `documentacion/`.
+- Registré las 9 fases de desarrollo con sus objetivos y el stack tecnológico oficial.
+- Añadí el estado actual del proyecto, marcando la Fase 1 como completada.
+---
+### Prompt Record
+**User Prompt:**
+> del repo limpia la rama Dev de la carpeta Db y documentacion
+
+**Action Taken / Agent Summary:**
+- Ejecuté `git rm -r` para eliminar las carpetas `Db` y `documentacion` de la rama `Dev`.
+- Hice un commit y subí los cambios al repositorio remoto para limpiar la rama.
+---
+### Prompt Record
+**User Prompt:**
+> Ahora sube toda la documentacion que creamos al repo
+
+**Action Taken / Agent Summary:**
+- Cambié a la rama `Documentacion`.
+- Añadí los archivos de la carpeta `documentacion/`.
+- Hice commit y push a `origin Documentacion`.
+- Regresé a la rama `Dev`.
+---
