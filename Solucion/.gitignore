@@ -1,0 +1,63 @@
+## Carpetas de compilación de .NET
+[Bb]in/
+[Oo]bj/
+
+## Visual Studio / Antigravity (basado en VS Code/VS)
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Rider / JetBrains
+.idea/
+*.sln.iml
+
+## VS Code
+.vscode/
+!.vscode/extensions.json
+
+## Resultados de build y publish
+[Bb]uild/
+[Rr]elease/
+[Dd]ebug/
+[Pp]ublish/
+*.pubxml
+*.pubxml.user
+
+## Archivos de test
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+## NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+## Secretos y configuración local (NUNCA subir esto a git)
+appsettings.Development.json
+appsettings.*.local.json
+secrets.json
+*.pfx
+
+## Logs
+*.log
+logs/
+
+## Archivos de SQL Server LocalDB
+*.mdf
+*.ldf
+*.ndf
+
+## Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## EF Core (deja las migraciones, ignora solo backups temporales si los generas)
+*.dbmdl
