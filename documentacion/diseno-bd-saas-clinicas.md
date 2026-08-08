@@ -3,6 +3,8 @@
 **Stack objetivo:** .NET 9 · ASP.NET Core · EF Core 9 · SQL Server · Blazor Server · MudBlazor · Clean Architecture / DDD
 **Alcance de este documento:** exclusivamente modelo de datos (SQL Server) — sin UI, sin endpoints, sin autenticación.
 
+> **Nota de estado (actualizada — Fase 3 completada):** este documento fue el diseño original, escrito antes de implementar nada. Ese diseño ya se implementó completo en `ClinicaSaaS.Persistence` (DbContext, `IEntityTypeConfiguration<T>` por esquema, interceptores) y la base de datos **ya no se crea corriendo el script SQL a mano** — se crea y se versiona con **EF Core Migrations**. El script SQL original (`Db/01-crear-base-datos-saas-clinicas.sql`) queda como referencia histórica de diseño, no como fuente de verdad del esquema actual. Ver la sección **13** al final de este documento para el flujo real de creación de la base de datos y el detalle de las pocas diferencias entre este diseño y lo que EF Core terminó generando.
+
 ---
 
 ## 1. Decisiones arquitectónicas de base (con justificación)
@@ -433,6 +435,8 @@ EliminadoPorUsuarioId UNIQUEIDENTIFIER NULL REFERENCES Security.Usuarios(Id)
 
 En este documento se omitió `EliminadoPorUsuarioId` de algunas tablas por espacio, pero **debe agregarse a las 15 tablas de negocio** listadas arriba para que la auditoría de "quién eliminó qué" no dependa exclusivamente de `Audit.Auditoria` (defensa en profundidad: si la tabla de auditoría fallara, la columna igual documenta el autor del soft delete).
 
+> **Actualización — Fase 3:** esto ya se completó. La migración de EF Core (`InicialEsquemaCompleto`) agrega `FechaEliminacion` y `EliminadoPorUsuarioId` a **todas** las entidades con soft delete, incluyendo las que este documento había dejado incompletas (`Doctores`, `Empleados`, `ProcedimientosCatalogo`, `Consultorios`, `Equipamiento`, `Citas`, `Facturas`, `Pagos`, `UsuarioClinicaRoles`). La base de datos real hoy tiene las tres columnas en las 15 tablas de negocio, tal como este documento ya pedía.
+
 ---
 
 ## 9. Índices — resumen consolidado y criterio de diseño
@@ -452,13 +456,23 @@ En este documento se omitió `EliminadoPorUsuarioId` de algunas tablas por espac
 
 1. **Multi-tenancy con Global Query Filters.** Cada `DbSet` de una entidad con `ClinicaId` debe tener `modelBuilder.Entity<T>().HasQueryFilter(e => e.ClinicaId == _tenantContext.ClinicaActualId)`. Esto se combina automáticamente con el filtro de soft delete (`&& !e.EstaEliminado`) mediante una interfaz `ITenantEntity` + `ISoftDeletable` y un método de extensión que aplica ambos filtros a todas las entidades que las implementen, iterando `modelBuilder.Model.GetEntityTypes()` en `OnModelCreating`. Evita repetir la expresión lambda en cada entidad.
 
+   > **Actualización — Fase 3:** implementado, pero con una desviación deliberada respecto a lo sugerido aquí. En vez del bucle genérico por reflexión sobre `GetEntityTypes()`, se llama el filtro explícitamente por cada entidad en `ClinicaSaaSDbContext.OnModelCreating` (`AplicarFiltroTenantYSoftDelete<Clinica>(this)`, etc.). Se prefirió así porque un bug silencioso en un bucle reflejado, en el filtro que garantiza el aislamiento entre clínicas de una BD médica/financiera, es un riesgo que no valía el ahorro de líneas — cualquiera puede leer en una sola clase exactamente qué entidad tiene qué filtro. También se confirmó en la implementación que el filtro debe referenciar una propiedad de la propia instancia del `DbContext` (no un valor capturado de otra fuente) para que EF Core lo re-evalúe correctamente por cada circuito de Blazor Server en vez de "congelarlo" con el `ClinicaId` de la primera petición.
+
 2. **Row-Level Security como segunda capa.** Los Global Query Filters son responsabilidad de la aplicación: un bug o un `IgnoreQueryFilters()` mal usado podría filtrar datos entre clínicas. Se recomienda además una **política de seguridad de SQL Server (`CREATE SECURITY POLICY`)** ligada a `SESSION_CONTEXT('ClinicaId')`, seteado por EF Core al abrir cada conexión (interceptor `IDbConnectionInterceptor`). Esto hace que incluso una consulta ad-hoc o un bug de la aplicación no pueda leer datos de otra clínica a nivel de motor de base de datos.
+
+   > **Actualización — Fase 3:** la mitad de "aplicación" ya está implementada — `TenantSessionContextConnectionInterceptor` setea `SESSION_CONTEXT('ClinicaId')` en cada conexión nueva. La política `CREATE SECURITY POLICY` en sí **sigue pendiente** (ver sección 12, sin implementar todavía) — sin ella, el `SESSION_CONTEXT` no tiene ningún efecto real aún, pero activar la RLS en el futuro será solo un cambio de base de datos, sin tocar Persistence de nuevo.
 
 3. **Interceptor de auditoría, no triggers de SQL.** Implementar `SaveChangesInterceptor` que, antes de `SavingChangesAsync`, inspeccione `ChangeTracker.Entries()` y genere una fila en `Audit.Auditoria` por cada entidad `Added`/`Modified`/`Deleted` (el "Deleted" real nunca ocurre por el patrón soft-delete, así que en la práctica será casi siempre `Modified` con `EstaEliminado` pasando de `0` a `1`). El interceptor tiene acceso al `IHttpContextAccessor`/`AuthenticationStateProvider` de Blazor Server para capturar `UsuarioId`, IP y dispositivo — algo que un trigger de SQL no puede hacer.
 
+   > **Actualización — Fase 3:** implementado como `AuditoriaSaveChangesInterceptor`. Por ahora usa implementaciones "de arranque" de `ICurrentUserContext`/`ITenantContext` que siempre devuelven "sin usuario" — la lectura real desde el circuito de Blazor Server (`IHttpContextAccessor`/`AuthenticationStateProvider`) queda para la Fase 4 (Infrastructure/Identity), tal como ya estaba planeado en la hoja de ruta del proyecto.
+
 4. **Nunca DbSet.Remove().** Se recomienda **eliminar el método `Remove` del vocabulario del equipo**: exponer únicamente un método de dominio `Eliminar(usuarioId)` en las entidades que setea `EstaEliminado`, `FechaEliminacion`, `EliminadoPorUsuarioId`, y dejar que EF Core lo trate como un `UPDATE` normal. Esto es más seguro que confiar en que cada desarrollador recuerde nunca usar `Remove`.
 
+   > **Actualización — Fase 2/3:** implementado en el dominio — cada Aggregate Root con soft delete expone `Eliminar(usuarioId, fechaUtc)` público que llama al `Eliminar` protegido de `SoftDeleteEntity`, con sus propias reglas de negocio (por ejemplo, una `Factura` no puede eliminarse sin estar anulada primero, una `Clinica` no puede eliminarse estando activa).
+
 5. **Versionado del historial clínico como Value Object inmutable.** `HistorialClinicoEntradas` debe exponerse en el dominio como una colección de solo lectura desde `HistorialClinico` (agregado raíz DDD); el único método permitido es `AgregarEntrada(...)`, nunca `EditarEntrada(...)`. Esto hace cumplir a nivel de código C# la regla de "el historial es versionado y cambia en el tiempo" sin depender solo de la disciplina del desarrollador sobre la base de datos.
+
+   > **Actualización — Fase 2:** implementado exactamente así en `HistorialClinico.cs` — `AgregarEntrada(...)` es el único punto de entrada; no existe ningún `EditarEntrada`.
 
 6. **Agregados DDD sugeridos** (límites de transacción/consistencia):
    - `Clinica` (raíz) — `Security`
@@ -470,11 +484,19 @@ En este documento se omitió `EliminadoPorUsuarioId` de algunas tablas por espac
 
    Ningún agregado referencia a otro por navegación de objeto completa, solo por Id (regla DDD estándar) — esto evita que EF Core intente cargar accidentalmente un grafo gigantesco que mezcle `Clinical` y `Billing` en una sola consulta.
 
+   > **Actualización — Fase 2:** el dominio implementado tiene 12 Aggregate Roots en total — los 6 de esta lista más `Usuario`, `UsuarioClinicaRol`, `Empleado`, `ProcedimientoCatalogo`, `Consultorio`, `Equipamiento` y `SecuenciaComprobante`, que este documento no listaba explícitamente aquí pero sí define como tablas propias en las secciones 2–6. La justificación completa de por qué cada uno es su propio agregado (y no una Entity dentro de otro) vive en los comentarios XML de cada clase de dominio.
+
 7. **`ROWVERSION` y concurrencia optimista.** En `Facturas`, `Pagos` y `HistorialClinicoEntradas` es crítico: dos recepcionistas registrando un abono al mismo tiempo sobre la misma factura deben generar un conflicto de concurrencia detectable (`DbUpdateConcurrencyException`) en vez de que el segundo pago "pise" silenciosamente el estado calculado del primero.
+
+   > **Actualización — Fase 3:** `RowVersion` se implementó como concurrency token en `Clinicas`, `Usuarios`, `Pacientes`, `Citas`, `Facturas` y `Pagos` (las 6 tablas que ya lo tenían en el script SQL original). `HistorialClinicoEntradas` **no** terminó con `RowVersion` — al ser append-only (nunca se actualiza una entrada existente, solo se agregan nuevas), el escenario de dos escrituras simultáneas pisándose no puede ocurrir sobre la misma fila, así que el token de concurrencia no aporta valor ahí. Queda documentado como decisión, no como omisión accidental.
 
 8. **Migraciones por esquema.** Con Clean Architecture, se recomienda un único `DbContext` para simplicidad de multi-tenant (todas las entidades comparten conexión y `SESSION_CONTEXT`), pero organizando las `IEntityTypeConfiguration<T>` en carpetas por esquema (`Persistence/Configurations/Clinical/...`) para que el mapeo refleje la separación de dominios aunque el `DbContext` sea uno solo.
 
+   > **Actualización — Fase 3:** implementado tal cual — `ClinicaSaaSDbContext` es único, con `Configurations/Security`, `Configurations/Personal`, `Configurations/Clinical`, `Configurations/Scheduling`, `Configurations/Billing` y `Configurations/Audit`. Ver sección 13 para el flujo de migraciones en sí.
+
 9. **Precisión decimal explícita.** Configurar globalmente en `OnModelCreating`: `configurationBuilder.Properties<decimal>().HavePrecision(18, 2)` para que ningún desarrollador olvide especificarlo por propiedad y EF Core no infiera un `decimal(18,0)` por defecto (error clásico que trunca centavos silenciosamente).
+
+   > **Actualización — Fase 3:** implementado literalmente igual, en `ClinicaSaaSDbContext.ConfigureConventions`.
 
 ---
 
@@ -511,6 +533,64 @@ Security.Clinicas (tenant raíz)
 ## 12. Próximos pasos sugeridos (fuera del alcance de este documento, pero relevantes)
 
 - Definir la política de retención: la ley dominicana de e-CF exige conservar comprobantes 10 años — decidir si eso vive en SQL Server "frío" con partición archivada o se exporta a Blob Storage con solo metadatos en BD.
-- Diseñar la política de `RLS` (`CREATE SECURITY POLICY`) con el DBA antes de ir a producción — este documento la recomienda pero no la implementa.
+- Diseñar la política de `RLS` (`CREATE SECURITY POLICY`) con el DBA antes de ir a producción — este documento la recomienda pero no la implementa. **(Sigue pendiente tras la Fase 3; el `SESSION_CONTEXT('ClinicaId')` que la política necesitaría ya se está seteando en cada conexión, ver sección 10.2, pero falta crear la política en sí.)**
 - Definir el proceso real de generación/firma/envío de e-CF a la DGII (fuera de alcance de modelo de datos: es integración externa).
 - Revisar con un abogado/contador dominicano la clasificación de contribuyente de cada clínica cliente (grande/mediano/pequeño) porque determina si `EstadoDGII` de `Facturas` debe ser obligatorio desde el día uno o puede quedar en modo NCF de papel temporalmente según el calendario vigente de la DGII.
+
+---
+
+## 13. Cómo se crea (y se recrea) la base de datos hoy — actualizado, Fase 3
+
+**Esto reemplaza cualquier instrucción anterior de correr el script SQL a mano.** La primera versión de esta base de datos se creó ejecutando manualmente `Db/01-crear-base-datos-saas-clinicas.sql` en SQL Server Management Studio, directamente desde este documento de diseño. Esa base manual **fue descartada** al construir la Fase 3 (Persistencia) porque el modelo real de EF Core terminó con pequeñas diferencias respecto al script original (ver más abajo), y mantener dos fuentes de verdad del esquema (un script SQL y un modelo de EF Core) habría sido garantía de que un día se desincronizaran.
+
+### De dónde sale el esquema ahora
+
+El esquema real de la base de datos **se genera desde el código C#**, no desde SQL escrito a mano:
+
+```
+Solucion/src/ClinicaSaaS.Persistence/
+├── ClinicaSaaSDbContext.cs          ← el modelo completo (qué tablas existen)
+├── Configurations/                   ← el detalle de cada tabla (columnas, tipos, índices, FKs), por esquema
+│   ├── Security/
+│   ├── Personal/
+│   ├── Clinical/
+│   ├── Scheduling/
+│   ├── Billing/
+│   └── Audit/
+└── Migrations/
+    └── 20260808110013_InicialEsquemaCompleto.cs   ← el SQL real que EF Core generó y aplicó
+```
+
+`ClinicaSaaSDbContext` + las `Configurations` son la única fuente de verdad del esquema. La migración es solo la traducción de ese modelo a SQL ejecutable — nunca se edita el esquema escribiendo `ALTER TABLE` suelto en SSMS.
+
+### Cómo crear la base de datos desde cero (una instalación nueva)
+
+```powershell
+cd Solucion\src\ClinicaSaaS.Persistence
+dotnet ef database update --startup-project ..\ClinicaSaaS.Web
+```
+
+Esto crea todas las tablas, esquemas, índices, FKs y el seed de `Security.Roles` (los 5 roles fijos) en una base de datos vacía, en un solo paso.
+
+### Cómo se agregan cambios de esquema a partir de ahora
+
+1. Cambiar el modelo en C# (agregar una propiedad al dominio si corresponde, y su mapeo en la `Configuration` correspondiente).
+2. Generar una migración nueva (nunca editar la anterior):
+   ```powershell
+   dotnet ef migrations add NombreDescriptivoDelCambio --startup-project ..\ClinicaSaaS.Web
+   ```
+3. Revisar el archivo generado en `Migrations/` antes de aplicarlo — EF Core no siempre acierta con todo (ver limitaciones abajo).
+4. Aplicar:
+   ```powershell
+   dotnet ef database update --startup-project ..\ClinicaSaaS.Web
+   ```
+
+### 3 diferencias reales entre este documento y lo que EF Core terminó generando
+
+Estas tres cosas se descubrieron construyendo la Fase 3 y **no las puede resolver EF Core solo** — están escritas a mano como SQL crudo (`migrationBuilder.Sql(...)`) dentro de la migración `InicialEsquemaCompleto`, en vez de venir de la configuración fluida normal:
+
+1. **`UQ_Paciente_Documento_Clinica`** (índice único de `Documento` sobre `Personal.Pacientes`, sección 3): EF Core no permite crear un índice compuesto que mezcle una columna del dueño (`ClinicaId`) con una propiedad de un Value Object mapeado con `OwnsOne` (`Documento`). Se agregó como `CREATE UNIQUE INDEX` crudo en la migración.
+2. **`FK_UCR_Rol`** (la FK de `Security.UsuarioClinicaRoles.RolId` hacia `Security.Roles.Id`, sección 2): EF Core no logró construir automáticamente esta relación porque `RolId` en el dominio es un enum (`RolClinica`) convertido a `int`, no una propiedad `int` directa. Se agregó como `ALTER TABLE ... ADD CONSTRAINT` crudo.
+3. **`Factura.Subtotal`/`Total` y `FacturaDetalle.Subtotal`** (secciones 6): en el dominio son propiedades *calculadas* (siempre la suma de los detalles/pagos, nunca editables directamente), pero la base de datos sí las guarda como columnas físicas para reportería. Un interceptor de `SaveChanges` (`FacturaTotalesSaveChangesInterceptor`) sincroniza el valor calculado hacia la columna justo antes de cada guardado — el dominio sigue siendo la única fuente de verdad del cálculo, la columna es solo una caché persistida del resultado.
+
+Ninguna de las tres es un cambio de diseño — son formas distintas de llegar exactamente al mismo esquema que este documento ya pedía, adaptadas a límites técnicos de EF Core que solo aparecieron al implementarlo de verdad.
