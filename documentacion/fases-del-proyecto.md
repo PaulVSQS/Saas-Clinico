@@ -72,7 +72,7 @@ Este documento detalla las 9 fases de construcción del sistema SaaS para Clíni
 
 ## ESTADO ACTUAL DEL PROYECTO
 
-**Etapa actual:** Listos para iniciar **FASE 4 — Infraestructura**.
+**Etapa actual:** Listos para iniciar **FASE 5 — Seguridad**.
 
 ### Hitos completados
 
@@ -117,3 +117,24 @@ Este documento detalla las 9 fases de construcción del sistema SaaS para Clíni
 - Todo el trabajo de la fase fue versionado y subido a la rama `Dev`, incluyendo el fix de connection string como commit separado (`fix: apuntar connection string a instancia SQLEXPRESSS`).
 
 **Pendiente detectado (no bloqueante, a resolver en fases posteriores):** `appsettings.json` no está en `.gitignore`, por lo que la cadena de conexión con el nombre de servidor de esta máquina (`LAPTOP-Q920ARC9\SQLEXPRESSS`) queda versionada tal cual. Antes de trabajar en equipo o en otra máquina, conviene moverla a `appsettings.Development.json` (ya ignorado) o a User Secrets.
+
+✅ **FASE 4 — Infraestructura (Completada):**
+- Se definieron en `Application/Common/Interfaces` las abstracciones técnicas que consumirán los casos de uso de Fase 6, sin que Application dependa de EF Core ni de ASP.NET Core:
+  - `IRepositorio<TEntity>` — contrato genérico (`ObtenerPorIdAsync`, `Consultar` como `IQueryable`, `AgregarAsync`) válido para los 13 Aggregate Roots, respetando los Global Query Filters de tenant/soft-delete ya configurados en el DbContext desde Fase 3. Deliberadamente sin `Actualizar`/`Eliminar`: el tracking de EF Core cubre las modificaciones y el borrado lógico ya es un método de dominio.
+  - `IUnitOfWork` — confirma en una sola transacción todos los cambios hechos a través de uno o varios repositorios durante el mismo caso de uso.
+  - `IFileStorageService` (+ el record `ResultadoAlmacenamiento`) — abstracción de almacenamiento de archivos binarios para `ArchivoClinico` (Fase 2), pensada para poder cambiar la implementación (disco local → Azure Blob/S3) sin tocar Application ni Web.
+  - `IDateTimeProvider` — abstracción del reloj del sistema, para permitir controlar la hora en pruebas unitarias futuras.
+- Se implementó en `Persistence`:
+  - `RepositorioBase<TEntity>` — única implementación de `IRepositorio<TEntity>` para todos los agregados (no una clase por cada uno), y `UnitOfWork` (delega en `ClinicaSaaSDbContext.SaveChangesAsync`, donde ya corren los 4 interceptores de Fase 3).
+  - `PersistenceServiceCollectionExtensions.AddPersistence()` — se centralizó ahí todo el registro de DI que antes vivía directo en `Program.cs` (DbContext + los 4 interceptores + `IUnitOfWork` + `IRepositorio<>` genérico).
+- Se implementó en `Infrastructure` (antes vacío, solo el `.csproj`):
+  - `HttpUserContext` — implementación real conjunta de `ICurrentUserContext` **e** `ITenantContext`, leyendo `IHttpContextAccessor`/`ClaimsPrincipal`. Captura los valores una única vez en el constructor (registrado Scoped, una instancia por circuito) para evitar el problema conocido de Blazor Server donde `HttpContext` puede quedar `null` después de la conexión inicial. Hoy, sin ASP.NET Core Identity todavía (Fase 5), siempre devuelve `UsuarioId`/`ClinicaId` nulos — comportamiento esperado; la lectura de claims (`ClaimTypes.NameIdentifier` y un claim custom `"clinica_id"`) ya queda lista para cuando Fase 5 empiece a emitirlos.
+  - `SystemDateTimeProvider` — implementación real de `IDateTimeProvider` sobre `DateTime.UtcNow`.
+  - `LocalFileStorageService` — implementación real de `IFileStorageService` sobre disco local (ruta configurable vía `Storage:RutaLocal` en `appsettings.json`, con fallback a `App_Data/archivos-clinicos`), calculando SHA-256 y generando nombres físicos únicos por archivo (nunca el nombre original).
+  - `InfrastructureServiceCollectionExtensions.AddInfrastructure()` — registra `IHttpContextAccessor`, `HttpUserContext` (resuelto como la misma instancia hacia ambas interfaces), `IDateTimeProvider` e `IFileStorageService`.
+  - Se agregó `<FrameworkReference Include="Microsoft.AspNetCore.App" />` al `.csproj` de Infrastructure (necesario para `IHttpContextAccessor`, sin convertirlo en un proyecto Web).
+- Se refactorizó `Program.cs`: ya no arma el `DbContext` ni los stubs de diseño a mano — ahora solo llama `builder.Services.AddInfrastructure()` y `builder.Services.AddPersistence(builder.Configuration)`.
+- Se actualizó el comentario de `DesignTimeContextStubs` (Persistence): esas implementaciones mínimas quedan reservadas exclusivamente para `ClinicaSaaSDbContextFactory` (herramientas `dotnet ef`), ya no las usa la app en caliente.
+- Se agregó la sección `"Storage": { "RutaLocal": "App_Data/archivos-clinicos" }` a `appsettings.json`, y `App_Data/` al `.gitignore` (los archivos clínicos subidos localmente nunca deben versionarse).
+- Se verificó `dotnet build` limpio en los 7 proyectos de la solución (0 errores; solo advertencias preexistentes de Fase 2 y una de seguridad de AutoMapper, ninguna nueva de Fase 4), y se corrió la app (`dotnet run`) confirmando arranque sin excepciones y carga correcta en el navegador — validando que todo el cableado de Dependency Injection de Fase 4 (`AddInfrastructure` + `AddPersistence`) quedó bien conectado de punta a punta.
+- Todo el trabajo de la fase fue versionado y subido a la rama `Dev`.
