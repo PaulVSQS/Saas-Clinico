@@ -49,6 +49,10 @@ secrets.json
 *.log
 logs/
 
+## Almacenamiento local de archivos clínicos (Fase 4, LocalFileStorageService) — nunca subir
+## contenido médico/adjuntos reales al repositorio, ni siquiera en un ambiente de prueba.
+**/App_Data/
+
 ## Archivos de SQL Server LocalDB
 *.mdf
 *.ldf

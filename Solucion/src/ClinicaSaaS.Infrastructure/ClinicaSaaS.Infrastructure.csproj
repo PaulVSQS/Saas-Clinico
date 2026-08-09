@@ -4,6 +4,13 @@
     <ProjectReference Include="..\ClinicaSaaS.Application\ClinicaSaaS.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Da acceso a IHttpContextAccessor/HttpContext (para HttpUserContext) y a las extensiones
+         de configuración de opciones (para LocalFileStorageService), sin convertir este proyecto
+         en un proyecto Web — Infrastructure sigue siendo una librería de clases común. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
