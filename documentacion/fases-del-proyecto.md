@@ -72,7 +72,7 @@ Este documento detalla las 9 fases de construcción del sistema SaaS para Clíni
 
 ## ESTADO ACTUAL DEL PROYECTO
 
-**Etapa actual:** Listos para iniciar **FASE 3 — Persistencia**.
+**Etapa actual:** Listos para iniciar **FASE 4 — Infraestructura**.
 
 ### Hitos completados
 
@@ -97,3 +97,23 @@ Este documento detalla las 9 fases de construcción del sistema SaaS para Clíni
 - Se detectó y resolvió un incidente de pérdida local de `Solucion/` (por quedar la carpeta parada en la rama `documentacion` durante una limpieza de Antigravity); el código se recuperó intacto desde la rama `Dev`.
 - Se agregó `.gitignore` a `Solucion/` y se dejaron de trackear `bin/`, `obj/` y `.vs/` (991 archivos limpiados del repositorio).
 - El dominio completo (45 archivos) fue copiado sobre la solución recuperada, la solución compiló correctamente (`dotnet build` limpio), y todo fue versionado y subido a la rama `Dev`.
+
+✅ **FASE 3 — Persistencia (Completada):**
+- Se implementó `ClinicaSaaSDbContext` con los `DbSet<T>` de los 12 Aggregate Roots del dominio, más el registro de `AuditLogEntry` para el esquema de auditoría.
+- Se crearon las **Configuraciones Fluent API** (`IEntityTypeConfiguration<T>`) de cada entidad, organizadas por esquema de negocio: `Security`, `Personal`, `Clinical`, `Scheduling`, `Billing` y `Audit` — incluyendo el mapeo de Value Objects con `OwnsOne` (`Email`, `Rnc`, `DocumentoIdentidad`, `Dinero`, `SignosVitales`, etc.).
+- Se implementaron **4 interceptores de `SaveChanges`**:
+  - `AuditableEntitySaveChangesInterceptor` y `AuditoriaSaveChangesInterceptor` — para el registro automático de auditoría (creación, modificación, quién y cuándo).
+  - `TenantSessionContextConnectionInterceptor` — setea `SESSION_CONTEXT('ClinicaId')` en cada conexión, base para el aislamiento multi-tenant (y para la futura política de `RLS` en SQL Server).
+  - `FacturaTotalesSaveChangesInterceptor` — sincroniza los totales calculados del dominio (`Factura.Subtotal`/`Total`) hacia las columnas físicas persistidas, justo antes de guardar.
+- Se creó `ClinicaSaaSDbContextFactory` (`IDesignTimeDbContextFactory<ClinicaSaaSDbContext>`) para que las herramientas de EF Core (`dotnet ef migrations add`, `dotnet ef database update`) puedan construir el `DbContext` en tiempo de diseño sin levantar todo el host de Blazor Server ni depender de `ICurrentUserContext`/`ITenantContext` reales (que se implementan en Fase 4).
+- Se generó y aplicó la primera migración, `InicialEsquemaCompleto`, con **3 ajustes escritos a mano en SQL crudo** (`migrationBuilder.Sql(...)`) que EF Core no pudo resolver automáticamente:
+  1. `UQ_Paciente_Documento_Clinica` — índice único compuesto entre `ClinicaId` y una propiedad de un Value Object mapeado con `OwnsOne`.
+  2. `FK_UCR_Rol` — la FK de `Security.UsuarioClinicaRoles.RolId` hacia `Security.Roles.Id`, ya que `RolId` en el dominio es un enum convertido a `int`.
+  3. Sincronización de `Factura.Subtotal`/`Total` y `FacturaDetalle.Subtotal` entre el dominio (propiedades calculadas) y la base de datos (columnas físicas para reportería), resuelta vía interceptor.
+- Se sembró (`seed`) el catálogo fijo de los **5 roles** del sistema en `Security.Roles`.
+- Se decidió y documentó que el script SQL manual original (`Db/01-crear-base-datos-saas-clinicas.sql`) queda **descartado como fuente de verdad**: el esquema real ahora se genera únicamente desde el código C# (`ClinicaSaaSDbContext` + `Configurations` + `Migrations`), evitando dos fuentes de verdad desincronizadas.
+- Se corrigió un problema de configuración detectado al validar contra SQL Server Management Studio: la cadena de conexión en `appsettings.json` apuntaba a `(localdb)\MSSQLLocalDB` (una instancia distinta a la que administra el usuario en SSMS), causando que la base de datos migrada no fuera visible. Se actualizó a la instancia real `LAPTOP-Q920ARC9\SQLEXPRESSS`, tanto en `appsettings.json` como en el fallback de `ClinicaSaaSDbContextFactory`, y se re-aplicó la migración correctamente.
+- Se verificó manualmente en SSMS, contra la base `ClinicaSaaS` ya creada: los 6 esquemas de negocio presentes, **21 tablas** en total (13 Aggregate Roots, 6 entidades internas de agregado y 2 tablas de soporte — `Auditoria` y `Roles`), el seed de los 5 roles en `Security.Roles`, y el registro correcto de la migración en `__EFMigrationsHistory`.
+- Todo el trabajo de la fase fue versionado y subido a la rama `Dev`, incluyendo el fix de connection string como commit separado (`fix: apuntar connection string a instancia SQLEXPRESSS`).
+
+**Pendiente detectado (no bloqueante, a resolver en fases posteriores):** `appsettings.json` no está en `.gitignore`, por lo que la cadena de conexión con el nombre de servidor de esta máquina (`LAPTOP-Q920ARC9\SQLEXPRESSS`) queda versionada tal cual. Antes de trabajar en equipo o en otra máquina, conviene moverla a `appsettings.Development.json` (ya ignorado) o a User Secrets.
