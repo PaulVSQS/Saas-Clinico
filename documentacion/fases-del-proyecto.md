@@ -72,7 +72,7 @@ Este documento detalla las 9 fases de construcción del sistema SaaS para Clíni
 
 ## ESTADO ACTUAL DEL PROYECTO
 
-**Etapa actual:** Listos para iniciar **FASE 5 — Seguridad**.
+**Etapa actual:** Listos para iniciar **FASE 6 — Módulos del Negocio**.
 
 ### Hitos completados
 
@@ -138,3 +138,26 @@ Este documento detalla las 9 fases de construcción del sistema SaaS para Clíni
 - Se agregó la sección `"Storage": { "RutaLocal": "App_Data/archivos-clinicos" }` a `appsettings.json`, y `App_Data/` al `.gitignore` (los archivos clínicos subidos localmente nunca deben versionarse).
 - Se verificó `dotnet build` limpio en los 7 proyectos de la solución (0 errores; solo advertencias preexistentes de Fase 2 y una de seguridad de AutoMapper, ninguna nueva de Fase 4), y se corrió la app (`dotnet run`) confirmando arranque sin excepciones y carga correcta en el navegador — validando que todo el cableado de Dependency Injection de Fase 4 (`AddInfrastructure` + `AddPersistence`) quedó bien conectado de punta a punta.
 - Todo el trabajo de la fase fue versionado y subido a la rama `Dev`.
+
+✅ **FASE 5 — Seguridad (Completada):**
+- **Decisión de diseño clave:** no se usó ASP.NET Core Identity completo (con sus propias tablas `AspNetUsers`) — el `Usuario` del dominio (Fase 2) ya tiene su propio `PasswordHash`, y traer las tablas de Identity encima habría creado dos fuentes de verdad de usuarios. Se construyó la autenticación/autorización real sobre el propio `Usuario`/`UsuarioClinicaRol`, reutilizando únicamente `PasswordHasher<TUser>` (la clase de hashing PBKDF2 de Identity Core, sin ningún store) para no reinventar la parte criptográfica.
+- Se agregó en `Application`:
+  - `IPasswordHasher` (+ `ResultadoVerificacionPassword`) e `IAutenticacionService` (+ los DTOs `UsuarioAutenticado`/`MembresiaClinica`).
+  - `AutenticacionService` — valida credenciales contra `Usuario`, detecta usuario inactivo, soporta rehash automático si el algoritmo cambiara de versión algún día, y devuelve las membresías activas del usuario en todas sus clínicas (aprovechando que el filtro global de tenant de `UsuarioClinicaRol` se "abre" cuando todavía no hay `ClinicaId` activo, definido desde Fase 3).
+  - `ApplicationServiceCollectionExtensions.AddApplication()`.
+  - Se extendió `IRepositorio<TEntity>` (Fase 4) con `PrimeroOPredeterminadoAsync`/`ListarAsync` — necesarios para que Application pueda consultar de forma async por criterio propio sin depender de EF Core directamente. Implementados en `RepositorioBase<TEntity>` (Persistence).
+- Se implementó en `Infrastructure`:
+  - `Pbkdf2PasswordHasher` — envuelve `PasswordHasher<Usuario>` de ASP.NET Core Identity.
+  - `ClinicaSaaSAuthorizationPolicies` — genera automáticamente una Policy de autorización por cada valor del enum `RolClinica` (Fase 2), más una Policy `SuperAdminSaaS`; un SuperAdmin SaaS siempre pasa cualquier Policy de rol.
+  - `SecurityServiceCollectionExtensions.AddClinicaSaaSSecurity()` — autenticación por cookie (elegida sobre JWT por ser la opción correcta para Blazor Server), estado de autenticación en cascada para `AuthorizeView`/`AuthorizeRouteView`, y registro de las Policies.
+  - Se registró `IPasswordHasher` en `InfrastructureServiceCollectionExtensions.AddInfrastructure()` (Fase 4), junto al resto de capacidades técnicas.
+- Se implementó en `Web`:
+  - `AuthEndpoints` (Minimal API) — `/Account/Login` y `/Account/Logout`, deliberadamente **fuera** de Blazor: `HttpContext.SignInAsync`/`SignOutAsync` no pueden llamarse de forma confiable desde dentro de un circuito interactivo de Blazor Server. Es el patrón oficial de .NET 8+: la página `/login` se renderiza **estática** (sin `@rendermode`) con un `<form>` HTML normal que hace POST directo a estos endpoints, protegido con `<AntiforgeryToken />` validado server-side.
+  - Los claims emitidos al iniciar sesión incluyen `NameIdentifier`, `Email`, `Name`, el claim custom `superadmin_saas` (si aplica), y — para la primera membresía activa del usuario — `clinica_id` y el `Role`. Un selector de clínica para usuarios con membresías en varias clínicas queda fuera del alcance de esta fase y se resuelve en una fase posterior sin romper la sesión mientras tanto (usa la primera por defecto).
+  - `Routes.razor` ahora usa `AuthorizeRouteView` (con `RedirectToLogin` para usuarios no autenticados, y mensaje de acceso denegado para autenticados sin permiso) en vez de `RouteView` simple. `NavMenu.razor` muestra el nombre del usuario/opción de cerrar sesión, o el enlace de iniciar sesión, según corresponda — sin tocar ninguno de los enlaces existentes (Home/Counter/Weather).
+  - `/mi-cuenta` (protegida con `[Authorize]`) — página de verificación end-to-end: muestra `ICurrentUserContext`/`ITenantContext` (Fase 4) y los claims reales de la sesión, confirmando que ambas fases quedaron bien conectadas.
+  - `DevDataSeeder` — **solo en Development**: crea un único Usuario SuperAdmin de prueba (`admin@clinicasaas.dev`) la primera vez que se corre la app localmente y no existe ningún Usuario todavía, para poder probar el login sin esperar al módulo real de alta de usuarios (Fase 6). Queda documentado para eliminarse en cuanto ese módulo exista.
+  - No se corrigió ninguna migración de EF Core — Fase 5 no modificó el esquema de base de datos, solo la capa de aplicación/seguridad.
+- **Bug detectado y corregido durante la verificación:** `AutenticacionService` comparaba `u.Email.Valor == valor` dentro del predicado async — EF Core no puede traducir un acceso a un miembro interno de una propiedad mapeada con `HasConversion` (a diferencia de `OwnsOne`). Se corrigió comparando el Value Object completo (`u.Email == emailBuscado`), que EF sí traduce aplicando el converter configurado en `UsuarioConfiguration`.
+- Se verificó `dotnet build` limpio en los 9 proyectos de la solución, y se probó el flujo completo en caliente: `DevDataSeeder` creando el usuario (confirmado en SSMS y en el log de auditoría automático), `/mi-cuenta` bloqueando el acceso sin sesión, login exitoso con las credenciales de prueba, `/mi-cuenta` mostrando el `UsuarioId` y los claims reales tras autenticarse, y logout devolviendo al estado sin sesión.
+- Todo el trabajo de la fase fue versionado y subido a la rama `Dev` (`feat: fase 5 - seguridad`).
