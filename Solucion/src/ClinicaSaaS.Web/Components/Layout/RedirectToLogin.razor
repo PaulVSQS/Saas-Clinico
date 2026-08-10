@@ -1,0 +1,15 @@
+@inject NavigationManager NavigationManager
+
+@code {
+    // Se usa desde Routes.razor (<NotAuthorized>) cuando el usuario NO está autenticado en
+    // absoluto (si estuviera autenticado pero sin el rol/policy requerido, Routes.razor muestra
+    // un mensaje de acceso denegado en su lugar, sin pasar por aquí).
+    // forceLoad: true a propósito -- este componente puede renderizarse en un contexto sin
+    // circuito interactivo activo, así que una navegación normal de Blazor no es confiable acá;
+    // una recarga completa de página sí lo es.
+    protected override void OnInitialized()
+    {
+        var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
+        NavigationManager.NavigateTo($"login?returnUrl={returnUrl}", forceLoad: true);
+    }
+}

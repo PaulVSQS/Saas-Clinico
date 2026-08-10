@@ -1,0 +1,52 @@
+@page "/mi-cuenta"
+@attribute [Authorize]
+@using System.Security.Claims
+@using ClinicaSaaS.Application.Common.Interfaces
+@inject ICurrentUserContext CurrentUser
+@inject ITenantContext TenantContext
+
+<PageTitle>Mi cuenta</PageTitle>
+
+<h1>Mi cuenta</h1>
+
+<p>
+    Esta página existe para demostrar, de punta a punta, que Fase 4 (ICurrentUserContext/
+    ITenantContext) y Fase 5 (login/claims) quedaron bien conectadas: si estás viendo esto,
+    es porque <code>[Authorize]</code> te dejó pasar y los valores de abajo vienen de la
+    cookie real de tu sesión, no de datos de ejemplo.
+</p>
+
+<dl class="row">
+    <dt class="col-sm-3">Usuario Id</dt>
+    <dd class="col-sm-9">@CurrentUser.UsuarioId</dd>
+
+    <dt class="col-sm-3">Clínica activa (Id)</dt>
+    <dd class="col-sm-9">@(TenantContext.ClinicaId?.ToString() ?? "— (sin clínica asignada)")</dd>
+
+    <dt class="col-sm-3">Dirección IP</dt>
+    <dd class="col-sm-9">@CurrentUser.DireccionIp</dd>
+</dl>
+
+<h2>Claims de la sesión</h2>
+<ul>
+    @foreach (var claim in _usuario.Claims)
+    {
+        <li><strong>@claim.Type</strong>: @claim.Value</li>
+    }
+</ul>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private ClaimsPrincipal _usuario = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationStateTask is not null)
+        {
+            var estado = await AuthenticationStateTask;
+            _usuario = estado.User;
+        }
+    }
+}

@@ -1,0 +1,46 @@
+@page "/login"
+@attribute [AllowAnonymous]
+
+<PageTitle>Iniciar sesión</PageTitle>
+
+<h1>Iniciar sesión</h1>
+
+@if (Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@MensajeDeError</div>
+}
+
+<form method="post" action="Account/Login">
+    <AntiforgeryToken />
+    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+    <div class="mb-3">
+        <label for="email" class="form-label">Correo electrónico</label>
+        <input type="email" class="form-control" id="email" name="email" required autofocus />
+    </div>
+
+    <div class="mb-3">
+        <label for="password" class="form-label">Contraseña</label>
+        <input type="password" class="form-control" id="password" name="password" required />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Entrar</button>
+</form>
+
+@code {
+    // Página estática (sin @rendermode) a propósito — ver el comentario en AuthEndpoints.cs
+    // sobre por qué el login no puede ser un componente interactivo de Blazor Server.
+
+    [SupplyParameterFromQuery]
+    private string? Error { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string MensajeDeError => Error switch
+    {
+        "credenciales" => "Correo o contraseña incorrectos.",
+        "token" => "La sesión del formulario expiró, intenta de nuevo.",
+        _ => "Ocurrió un error al iniciar sesión."
+    };
+}

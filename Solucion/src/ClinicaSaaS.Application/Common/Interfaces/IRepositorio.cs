@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using ClinicaSaaS.SharedKernel.Common;
 
 namespace ClinicaSaaS.Application.Common.Interfaces;
@@ -37,4 +38,18 @@ public interface IRepositorio<TEntity> where TEntity : EntityBase
     /// misma unidad de trabajo que cualquier otro cambio del caso de uso.
     /// </summary>
     Task AgregarAsync(TEntity entidad, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Primer resultado que cumple <paramref name="predicado"/>, o null. Se agrega en Fase 5
+    /// (junto con <see cref="ListarAsync"/>) porque Application necesita ejecutar consultas
+    /// async por criterio propio (ej. buscar Usuario por Email al autenticar) SIN poder llamar
+    /// FirstOrDefaultAsync/ToListAsync de EF Core directamente sobre el IQueryable de
+    /// <see cref="Consultar"/> — esos son extension methods del paquete EF Core, que Application
+    /// no referencia a propósito. Mantiene la misma regla que el resto de la interfaz: Persistence
+    /// es la única capa que sabe ejecutar la consulta contra la base de datos.
+    /// </summary>
+    Task<TEntity?> PrimeroOPredeterminadoAsync(Expression<Func<TEntity, bool>> predicado, CancellationToken cancellationToken = default);
+
+    /// <summary>Todos los resultados que cumplen <paramref name="predicado"/>. Ver <see cref="PrimeroOPredeterminadoAsync"/>.</summary>
+    Task<IReadOnlyList<TEntity>> ListarAsync(Expression<Func<TEntity, bool>> predicado, CancellationToken cancellationToken = default);
 }

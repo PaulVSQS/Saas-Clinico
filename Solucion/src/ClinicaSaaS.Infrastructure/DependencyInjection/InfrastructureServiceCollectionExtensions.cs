@@ -28,6 +28,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
+        // Fase 5 — PasswordHasher<TUser> es thread-safe y sin estado propio por request, por
+        // eso Singleton (igual criterio que SystemDateTimeProvider/LocalFileStorageService).
+        services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
+
         return services;
     }
 }
