@@ -160,11 +160,12 @@ else
         _modeloDatos.NombreCompleto = _usuario.NombreCompleto;
         _modeloDatos.Telefono = _usuario.Telefono;
 
-        // Cargar membresías y clínicas disponibles en paralelo.
-        var tareasParalelas = Task.WhenAll(
-            CargarMembresiasAsync(),
-            CargarClinicasAsync());
-        await tareasParalelas;
+        // Ejecutar secuencialmente: IUsuarioService e IClinicaService comparten la misma
+        // instancia de ClinicaSaaSDbContext (registrado como Scoped por circuito Blazor).
+        // EF Core no soporta dos operaciones async simultáneas sobre el mismo DbContext;
+        // Task.WhenAll lanzaría InvalidOperationException. Awaits secuenciales lo evitan.
+        await CargarMembresiasAsync();
+        await CargarClinicasAsync();
     }
 
     private async Task CargarMembresiasAsync()
