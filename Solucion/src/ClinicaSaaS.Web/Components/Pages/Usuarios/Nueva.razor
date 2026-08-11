@@ -1,0 +1,67 @@
+@page "/usuarios/nuevo"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.SuperAdminSaaS)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Usuarios
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IUsuarioService UsuarioService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nuevo usuario</PageTitle>
+
+<h1>Nuevo usuario</h1>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+<EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+    <div class="mb-3">
+        <label for="email" class="form-label">Correo electrónico</label>
+        <InputText id="email" class="form-control" @bind-Value="_modelo.Email" placeholder="usuario@ejemplo.com" />
+    </div>
+
+    <div class="mb-3">
+        <label for="nombreCompleto" class="form-label">Nombre completo</label>
+        <InputText id="nombreCompleto" class="form-control" @bind-Value="_modelo.NombreCompleto" />
+    </div>
+
+    <div class="mb-3">
+        <label for="password" class="form-label">Contraseña</label>
+        <InputText id="password" type="password" class="form-control" @bind-Value="_modelo.Password" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@_guardando">Registrar usuario</button>
+    <a class="btn btn-link" href="usuarios">Cancelar</a>
+</EditForm>
+
+@code {
+    private readonly ModeloNuevoUsuario _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        var resultado = await UsuarioService.RegistrarAsync(
+            new RegistrarUsuarioRequest(_modelo.Email, _modelo.NombreCompleto, _modelo.Password));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo("usuarios");
+    }
+
+    private sealed class ModeloNuevoUsuario
+    {
+        public string Email { get; set; } = string.Empty;
+        public string NombreCompleto { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}

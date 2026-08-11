@@ -1,0 +1,116 @@
+@page "/usuarios"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.SuperAdminSaaS)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Usuarios
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IUsuarioService UsuarioService
+
+<PageTitle>Usuarios</PageTitle>
+
+<h1>Usuarios</h1>
+
+<p>
+    Gestión de los usuarios de la plataforma — protegido con la Policy
+    <code>SuperAdminSaaS</code> (Fase 5), porque crear o desactivar un usuario es una
+    operación a nivel SaaS: el usuario es identidad global, no pertenece a ninguna
+    clínica concreta (la asignación de roles por clínica vive en UsuarioClinicaRol).
+</p>
+
+<a class="btn btn-primary mb-3" href="usuarios/nuevo">+ Nuevo usuario</a>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_usuarios is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_usuarios.Count == 0)
+{
+    <p>No hay usuarios registrados todavía.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Correo electrónico</th>
+                <th>Teléfono</th>
+                <th>SuperAdmin</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var usuario in _usuarios)
+            {
+                <tr>
+                    <td>@usuario.NombreCompleto</td>
+                    <td>@usuario.Email</td>
+                    <td>@(usuario.Telefono ?? "—")</td>
+                    <td>
+                        @if (usuario.EsSuperAdminSaaS)
+                        {
+                            <span class="badge bg-warning text-dark">Sí</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">No</span>
+                        }
+                    </td>
+                    <td>
+                        @if (usuario.Activo)
+                        {
+                            <span class="badge bg-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactivo</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="@($"usuarios/{usuario.Id}/editar")">Editar</a>
+                        &nbsp;·&nbsp;
+                        @if (usuario.Activo)
+                        {
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(usuario.Id)">Desactivar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(usuario.Id)">Reactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<UsuarioDto>? _usuarios;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _usuarios = await UsuarioService.ListarAsync();
+    }
+
+    private async Task DesactivarAsync(Guid usuarioId)
+    {
+        var resultado = await UsuarioService.DesactivarAsync(usuarioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task ReactivarAsync(Guid usuarioId)
+    {
+        var resultado = await UsuarioService.ReactivarAsync(usuarioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}

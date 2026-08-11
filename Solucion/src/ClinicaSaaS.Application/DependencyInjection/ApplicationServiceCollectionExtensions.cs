@@ -1,6 +1,7 @@
 using ClinicaSaaS.Application.Clinicas;
 using ClinicaSaaS.Application.Common.Interfaces;
 using ClinicaSaaS.Application.Security;
+using ClinicaSaaS.Application.Usuarios;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ClinicaSaaS.Application.DependencyInjection;
@@ -17,6 +18,8 @@ public static class ApplicationServiceCollectionExtensions
     {
         services.AddScoped<IAutenticacionService, AutenticacionService>();
         services.AddScoped<IClinicaService, ClinicaService>();
+        // Módulo 2 de Fase 6: Usuarios
+        services.AddScoped<IUsuarioService, UsuarioService>();
         return services;
     }
 }

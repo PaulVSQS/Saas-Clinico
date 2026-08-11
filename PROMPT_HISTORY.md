@@ -59,3 +59,17 @@
 - Hice commit y push a `origin Documentacion`.
 - Regresé a la rama `Dev`.
 ---
+
+### Prompt Record
+**User Prompt:**
+> Módulo 2 de Fase 6 (Módulos del Negocio): Usuarios — implementar IUsuarioService + UsuarioService, registrar en DI, y crear las páginas Blazor Index/Nueva/Editar con protección SuperAdminSaaS, más el enlace en NavMenu.
+
+**Action Taken / Agent Summary:**
+- Revisé exhaustivamente los archivos de plantilla: IClinicaService, ClinicaService, páginas Blazor de Clínicas, entidades de dominio Usuario y UsuarioClinicaRol, IRepositorio, IPasswordHasher, IUnitOfWork, QueryFilterExtensions y NavMenu.
+- Creé `Application/Usuarios/IUsuarioService.cs` con DTOs (UsuarioDto, UsuarioClinicaRolDto, RegistrarUsuarioRequest, ActualizarDatosPersonalesRequest, AsignarRolRequest) e interface completa.
+- Creé `Application/Usuarios/UsuarioService.cs` implementando todos los casos de uso, respetando la regla crítica de comparar Email VO completo en LINQ (nunca .Valor), y usando join en-memoria con IClinicaService para obtener nombres de clínica.
+- Actualicé `ApplicationServiceCollectionExtensions.cs` registrando `IUsuarioService → UsuarioService`.
+- Creé `Web/Components/Pages/Usuarios/Index.razor`, `Nueva.razor`, `Editar.razor` replicando el patrón exacto de Clínicas (AuthorizeView SuperAdminSaaS, modelos sellados locales, manejo de errores inline).
+- Actualicé `NavMenu.razor` agregando el enlace "Usuarios" dentro del bloque AuthorizeView existente de SuperAdminSaaS.
+- Ejecuté `dotnet build` y confirmé compilación sin errores (solo warnings pre-existentes en Domain).
+---

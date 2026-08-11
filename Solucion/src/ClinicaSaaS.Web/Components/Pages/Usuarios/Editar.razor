@@ -1,0 +1,250 @@
+@page "/usuarios/{UsuarioId:guid}/editar"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.SuperAdminSaaS)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Application.Usuarios
+@using ClinicaSaaS.Domain.Security.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IUsuarioService UsuarioService
+@inject IClinicaService ClinicaService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Editar usuario</PageTitle>
+
+@if (_usuario is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese usuario no existe.</p>
+    <a class="btn btn-link" href="usuarios">Volver al listado</a>
+}
+else
+{
+    var usuario = _usuario!;
+
+    <h1>Editar @usuario.NombreCompleto</h1>
+
+    <dl class="row">
+        <dt class="col-sm-2">Correo</dt>
+        <dd class="col-sm-10">@usuario.Email</dd>
+    </dl>
+    <p><em>El correo electrónico no se edita aquí — cambiar la identidad de acceso requiere un proceso aparte con verificación de email.</em></p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+    @if (_mensajeExito is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExito</div>
+    }
+
+    <!-- Sección 1: Datos personales -->
+    <EditForm Model="_modeloDatos" OnValidSubmit="GuardarDatosAsync">
+        <div class="mb-3">
+            <label for="nombreCompleto" class="form-label">Nombre completo</label>
+            <InputText id="nombreCompleto" class="form-control" @bind-Value="_modeloDatos.NombreCompleto" />
+        </div>
+
+        <div class="mb-3">
+            <label for="telefono" class="form-label">Teléfono</label>
+            <InputText id="telefono" class="form-control" @bind-Value="_modeloDatos.Telefono" />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Guardar datos personales</button>
+    </EditForm>
+
+    <hr />
+
+    <!-- Sección 2: Membresías de clínica/rol -->
+    <h2>Membresías de clínica</h2>
+
+    @if (_membresias is null)
+    {
+        <p><em>Cargando membresías...</em></p>
+    }
+    else if (_membresias.Count == 0)
+    {
+        <p>Este usuario no tiene roles asignados en ninguna clínica.</p>
+    }
+    else
+    {
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Clínica</th>
+                    <th>Rol</th>
+                    <th>Desde</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in _membresias)
+                {
+                    <tr>
+                        <td>@m.ClinicaNombre</td>
+                        <td>@m.Rol</td>
+                        <td>@m.FechaAsignacion.ToString("dd/MM/yyyy")</td>
+                        <td>
+                            <button type="button" class="btn btn-link p-0 text-danger"
+                                    @onclick="() => RevocarRolAsync(m.Id)">
+                                Revocar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <h3>Asignar nuevo rol</h3>
+
+    <EditForm Model="_modeloRol" OnValidSubmit="AsignarRolAsync">
+        <div class="mb-3">
+            <label for="clinicaId" class="form-label">Clínica</label>
+            <InputSelect id="clinicaId" class="form-select" @bind-Value="_modeloRol.ClinicaId">
+                <option value="">-- Seleccione una clínica --</option>
+                @if (_clinicas is not null)
+                {
+                    @foreach (var clinica in _clinicas)
+                    {
+                        <option value="@clinica.Id">@clinica.NombreComercial</option>
+                    }
+                }
+            </InputSelect>
+        </div>
+
+        <div class="mb-3">
+            <label for="rol" class="form-label">Rol</label>
+            <InputSelect id="rol" class="form-select" @bind-Value="_modeloRol.Rol">
+                @foreach (var rol in Enum.GetValues<RolClinica>())
+                {
+                    <option value="@rol">@rol</option>
+                }
+            </InputSelect>
+        </div>
+
+        <button type="submit" class="btn btn-secondary">Asignar rol</button>
+    </EditForm>
+
+    <hr />
+
+    <a class="btn btn-link" href="usuarios">Volver al listado</a>
+}
+
+@code {
+    [Parameter]
+    public Guid UsuarioId { get; set; }
+
+    private UsuarioDto? _usuario;
+    private bool _noEncontrado;
+    private string? _mensajeError;
+    private string? _mensajeExito;
+    private IReadOnlyList<UsuarioClinicaRolDto>? _membresias;
+    private IReadOnlyList<ClinicaDto>? _clinicas;
+
+    private readonly ModeloDatosPersonales _modeloDatos = new();
+    private readonly ModeloAsignacionRol _modeloRol = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _usuario = await UsuarioService.ObtenerAsync(UsuarioId);
+        if (_usuario is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        _modeloDatos.NombreCompleto = _usuario.NombreCompleto;
+        _modeloDatos.Telefono = _usuario.Telefono;
+
+        // Cargar membresías y clínicas disponibles en paralelo.
+        var tareasParalelas = Task.WhenAll(
+            CargarMembresiasAsync(),
+            CargarClinicasAsync());
+        await tareasParalelas;
+    }
+
+    private async Task CargarMembresiasAsync()
+    {
+        _membresias = await UsuarioService.ListarMembresiasAsync(UsuarioId);
+    }
+
+    private async Task CargarClinicasAsync()
+    {
+        _clinicas = await ClinicaService.ListarAsync();
+    }
+
+    private async Task GuardarDatosAsync()
+    {
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        var resultado = await UsuarioService.ActualizarDatosPersonalesAsync(
+            UsuarioId, new ActualizarDatosPersonalesRequest(_modeloDatos.NombreCompleto, _modeloDatos.Telefono));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Datos personales actualizados.";
+        _usuario = await UsuarioService.ObtenerAsync(UsuarioId);
+    }
+
+    private async Task AsignarRolAsync()
+    {
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        if (_modeloRol.ClinicaId == Guid.Empty)
+        {
+            _mensajeError = "Debe seleccionar una clínica.";
+            return;
+        }
+
+        var resultado = await UsuarioService.AsignarRolAsync(
+            new AsignarRolRequest(UsuarioId, _modeloRol.ClinicaId, _modeloRol.Rol));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = $"Rol {_modeloRol.Rol} asignado correctamente.";
+        _modeloRol.ClinicaId = Guid.Empty;
+        await CargarMembresiasAsync();
+    }
+
+    private async Task RevocarRolAsync(Guid membresiaId)
+    {
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        var resultado = await UsuarioService.RevocarRolAsync(membresiaId);
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Membresía revocada.";
+        await CargarMembresiasAsync();
+    }
+
+    private sealed class ModeloDatosPersonales
+    {
+        public string NombreCompleto { get; set; } = string.Empty;
+        public string? Telefono { get; set; }
+    }
+
+    private sealed class ModeloAsignacionRol
+    {
+        public Guid ClinicaId { get; set; }
+        public RolClinica Rol { get; set; } = RolClinica.Recepcion;
+    }
+}
