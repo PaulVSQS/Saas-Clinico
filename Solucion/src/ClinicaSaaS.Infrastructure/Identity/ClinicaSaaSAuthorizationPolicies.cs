@@ -20,6 +20,15 @@ public static class ClinicaSaaSAuthorizationPolicies
     /// <summary>Tipo de claim (no estándar) que marca a un usuario como SuperAdmin SaaS.</summary>
     public const string ClaimSuperAdminSaaS = "superadmin_saas";
 
+    /// <summary>
+    /// Nombre literal de la Policy de AdminClinica — necesario como const aparte porque
+    /// <see cref="NombrePolicyDeRol"/> es un método, y los atributos [Authorize(Policy = ...)]
+    /// exigen una constante en tiempo de compilación. Debe coincidir exactamente con
+    /// NombrePolicyDeRol(RolClinica.AdminClinica); si el enum RolClinica cambia ese nombre
+    /// algún día, este valor hay que actualizarlo a mano.
+    /// </summary>
+    public const string AdminClinica = "Rol:AdminClinica";
+
     /// <summary>Nombre de la Policy asociada a un RolClinica — ej. NombrePolicyDeRol(RolClinica.Doctor) == "Rol:Doctor".</summary>
     public static string NombrePolicyDeRol(RolClinica rol) => $"Rol:{rol}";
 

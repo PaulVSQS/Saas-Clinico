@@ -73,3 +73,16 @@
 - Actualicé `NavMenu.razor` agregando el enlace "Usuarios" dentro del bloque AuthorizeView existente de SuperAdminSaaS.
 - Ejecuté `dotnet build` y confirmé compilación sin errores (solo warnings pre-existentes en Domain).
 ---
+
+---
+### Prompt Record
+**User Prompt:**
+> Bug fix: en `Usuarios/Editar.razor`, el método `OnInitializedAsync` usa `Task.WhenAll` para cargar membresías y clínicas "en paralelo", lo que revienta con `InvalidOperationException` porque ambos servicios comparten la misma instancia de `ClinicaSaaSDbContext` (Scoped). Fix: reemplazar `Task.WhenAll` con dos `await` secuenciales. Luego buscar en todo el proyecto cualquier otro uso del mismo patrón problemático y corregirlo. Finalmente correr `dotnet build` y confirmar 0 errores.
+
+**Action Taken / Agent Summary:**
+- Revisé `Usuarios/Editar.razor` lines 163-167 y confirmé el `Task.WhenAll(CargarMembresiasAsync(), CargarClinicasAsync())`.
+- Reemplacé el bloque `Task.WhenAll` por dos `await` secuenciales, agregando un comentario explicativo sobre la restricción de `DbContext` Scoped compartido en Blazor Server.
+- Inspeccioné los 8 archivos `.razor` restantes en `Pages/Clinicas/` y `Pages/Usuarios/` (Index, Nueva, Editar para cada carpeta, más Counter, Error, Home, Login, MiCuenta, Weather): ninguno tiene un patrón equivalente de operaciones async paralelas sobre múltiples servicios de Application.
+- Ejecuté `dotnet build` — resultado: **Compilación correcta. 0 Errores, 2 Advertencias** (NU1903 sobre AutoMapper 14.0.0, pre-existentes y sin relación con este cambio).
+- Único archivo modificado: `Solucion/src/ClinicaSaaS.Web/Components/Pages/Usuarios/Editar.razor`
+---

@@ -39,6 +39,16 @@ public sealed class Empleado : SoftDeleteEntity, ITenantEntity
         return new Empleado(id, usuarioId, clinicaId, cargo.Trim()) { FechaIngreso = fechaIngreso };
     }
 
+    public Result ActualizarDatos(string cargo, DateOnly? fechaIngreso)
+    {
+        if (string.IsNullOrWhiteSpace(cargo))
+            return new Error("Empleado.CargoRequerido", "El cargo es requerido.");
+
+        Cargo = cargo.Trim();
+        FechaIngreso = fechaIngreso;
+        return Result.Exitoso();
+    }
+
     public Result Desactivar()
     {
         if (!Activo)

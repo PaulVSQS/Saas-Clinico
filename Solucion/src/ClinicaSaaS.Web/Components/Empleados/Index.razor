@@ -1,0 +1,109 @@
+@page "/empleados"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Empleados
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IEmpleadoService EmpleadoService
+
+<PageTitle>Empleados</PageTitle>
+
+<h1>Empleados</h1>
+
+<p>
+    Personal administrativo/operativo de la clínica — protegido con la Policy
+    <code>Rol:AdminClinica</code> (Fase 5): a diferencia de Clínicas y Usuarios (que son
+    entidades de plataforma), un Empleado pertenece a una clínica concreta, así que lo gestiona
+    el administrador de esa clínica, no solo un SuperAdmin SaaS.
+</p>
+
+<a class="btn btn-primary mb-3" href="empleados/nuevo">+ Nuevo empleado</a>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_empleados is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_empleados.Count == 0)
+{
+    <p>No hay empleados registrados todavía.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Correo electrónico</th>
+                <th>Clínica</th>
+                <th>Cargo</th>
+                <th>Desde</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var empleado in _empleados)
+            {
+                <tr>
+                    <td>@empleado.NombreUsuario</td>
+                    <td>@empleado.EmailUsuario</td>
+                    <td>@empleado.NombreClinica</td>
+                    <td>@empleado.Cargo</td>
+                    <td>@(empleado.FechaIngreso?.ToString("dd/MM/yyyy") ?? "—")</td>
+                    <td>
+                        @if (empleado.Activo)
+                        {
+                            <span class="badge bg-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactivo</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="@($"empleados/{empleado.Id}/editar")">Editar</a>
+                        &nbsp;·&nbsp;
+                        @if (empleado.Activo)
+                        {
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(empleado.Id)">Desactivar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(empleado.Id)">Reactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<EmpleadoDto>? _empleados;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _empleados = await EmpleadoService.ListarAsync();
+    }
+
+    private async Task DesactivarAsync(Guid empleadoId)
+    {
+        var resultado = await EmpleadoService.DesactivarAsync(empleadoId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task ReactivarAsync(Guid empleadoId)
+    {
+        var resultado = await EmpleadoService.ReactivarAsync(empleadoId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}
