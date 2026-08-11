@@ -71,7 +71,7 @@ public sealed class ClinicaSaaSDbContext : DbContext
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ClinicaSaaSDbContext).Assembly);
 
         // Tenant + soft delete (agregados que pertenecen a una clínica y se eliminan lógicamente)
-        modelBuilder.AplicarFiltroTenantYSoftDelete<Clinica>(this);
+        modelBuilder.AplicarFiltroTenantYSoftDeletePorId<Clinica>(this);
         modelBuilder.AplicarFiltroTenantYSoftDelete<UsuarioClinicaRol>(this);
         modelBuilder.AplicarFiltroTenantYSoftDelete<Paciente>(this);
         modelBuilder.AplicarFiltroTenantYSoftDelete<Doctor>(this);

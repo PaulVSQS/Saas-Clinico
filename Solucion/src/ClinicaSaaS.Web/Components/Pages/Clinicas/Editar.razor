@@ -1,0 +1,145 @@
+@page "/clinicas/{ClinicaId:guid}/editar"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.SuperAdminSaaS)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Domain.Security.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IClinicaService ClinicaService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Editar clínica</PageTitle>
+
+@if (_clinica is null && !_noEncontrada)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrada)
+{
+    <p role="alert">Esa clínica no existe.</p>
+    <a class="btn btn-link" href="clinicas">Volver al listado</a>
+}
+else
+{
+    var clinica = _clinica!;
+
+    <h1>Editar @clinica.NombreComercial</h1>
+
+    <dl class="row">
+        <dt class="col-sm-2">Razón social</dt>
+        <dd class="col-sm-10">@clinica.RazonSocial</dd>
+        <dt class="col-sm-2">RNC</dt>
+        <dd class="col-sm-10">@clinica.Rnc</dd>
+    </dl>
+    <p><em>Razón social y RNC no se editan aquí — son datos fiscales; un cambio real requeriría un proceso administrativo aparte, no un simple formulario.</em></p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+    @if (_mensajeExito is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExito</div>
+    }
+
+    <EditForm Model="_modelo" OnValidSubmit="GuardarContactoAsync">
+        <div class="mb-3">
+            <label for="direccion" class="form-label">Dirección</label>
+            <InputText id="direccion" class="form-control" @bind-Value="_modelo.Direccion" />
+        </div>
+
+        <div class="mb-3">
+            <label for="telefono" class="form-label">Teléfono</label>
+            <InputText id="telefono" class="form-control" @bind-Value="_modelo.Telefono" />
+        </div>
+
+        <div class="mb-3">
+            <label for="email" class="form-label">Correo electrónico</label>
+            <InputText id="email" class="form-control" @bind-Value="_modelo.Email" />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Guardar contacto</button>
+    </EditForm>
+
+    <hr />
+
+    <h2>Plan de suscripción</h2>
+    <div class="mb-3" style="max-width: 300px;">
+        <select class="form-select" value="@_planSeleccionado" @onchange="CambiarPlanAsync">
+            @foreach (var plan in Enum.GetValues<PlanSuscripcion>())
+            {
+                <option value="@plan">@plan</option>
+            }
+        </select>
+    </div>
+
+    <a class="btn btn-link" href="clinicas">Volver al listado</a>
+}
+
+@code {
+    [Parameter]
+    public Guid ClinicaId { get; set; }
+
+    private ClinicaDto? _clinica;
+    private bool _noEncontrada;
+    private string? _mensajeError;
+    private string? _mensajeExito;
+    private PlanSuscripcion _planSeleccionado;
+    private readonly ModeloContacto _modelo = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _clinica = await ClinicaService.ObtenerAsync(ClinicaId);
+        if (_clinica is null)
+        {
+            _noEncontrada = true;
+            return;
+        }
+
+        _modelo.Direccion = _clinica.Direccion;
+        _modelo.Telefono = _clinica.Telefono;
+        _modelo.Email = _clinica.Email;
+        _planSeleccionado = _clinica.PlanSuscripcion;
+    }
+
+    private async Task GuardarContactoAsync()
+    {
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        var resultado = await ClinicaService.ActualizarContactoAsync(
+            ClinicaId, new ActualizarContactoClinicaRequest(_modelo.Direccion, _modelo.Telefono, _modelo.Email));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Datos de contacto actualizados.";
+    }
+
+    private async Task CambiarPlanAsync(ChangeEventArgs e)
+    {
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        var nuevoPlan = Enum.Parse<PlanSuscripcion>(e.Value!.ToString()!);
+        var resultado = await ClinicaService.CambiarPlanAsync(ClinicaId, nuevoPlan);
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _planSeleccionado = nuevoPlan;
+        _mensajeExito = $"Plan actualizado a {nuevoPlan}.";
+    }
+
+    private sealed class ModeloContacto
+    {
+        public string? Direccion { get; set; }
+        public string? Telefono { get; set; }
+        public string? Email { get; set; }
+    }
+}

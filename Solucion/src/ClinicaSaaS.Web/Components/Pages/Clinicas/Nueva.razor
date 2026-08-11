@@ -1,0 +1,67 @@
+@page "/clinicas/nueva"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.SuperAdminSaaS)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IClinicaService ClinicaService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nueva clínica</PageTitle>
+
+<h1>Nueva clínica</h1>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+<EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+    <div class="mb-3">
+        <label for="razonSocial" class="form-label">Razón social</label>
+        <InputText id="razonSocial" class="form-control" @bind-Value="_modelo.RazonSocial" />
+    </div>
+
+    <div class="mb-3">
+        <label for="nombreComercial" class="form-label">Nombre comercial</label>
+        <InputText id="nombreComercial" class="form-control" @bind-Value="_modelo.NombreComercial" />
+    </div>
+
+    <div class="mb-3">
+        <label for="rnc" class="form-label">RNC</label>
+        <InputText id="rnc" class="form-control" @bind-Value="_modelo.Rnc" placeholder="9 u 11 dígitos" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@_guardando">Registrar clínica</button>
+    <a class="btn btn-link" href="clinicas">Cancelar</a>
+</EditForm>
+
+@code {
+    private readonly ModeloNuevaClinica _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        var resultado = await ClinicaService.RegistrarAsync(
+            new RegistrarClinicaRequest(_modelo.RazonSocial, _modelo.NombreComercial, _modelo.Rnc));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo("clinicas");
+    }
+
+    private sealed class ModeloNuevaClinica
+    {
+        public string RazonSocial { get; set; } = string.Empty;
+        public string NombreComercial { get; set; } = string.Empty;
+        public string Rnc { get; set; } = string.Empty;
+    }
+}

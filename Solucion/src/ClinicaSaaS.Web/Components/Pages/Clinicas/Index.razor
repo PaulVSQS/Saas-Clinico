@@ -1,0 +1,106 @@
+@page "/clinicas"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.SuperAdminSaaS)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IClinicaService ClinicaService
+
+<PageTitle>Clínicas</PageTitle>
+
+<h1>Clínicas</h1>
+
+<p>
+    Gestión de las clínicas registradas en la plataforma — protegido con la Policy
+    <code>SuperAdminSaaS</code> (Fase 5), porque dar de alta o desactivar una clínica es una
+    operación a nivel de la plataforma SaaS, no de una clínica individual.
+</p>
+
+<a class="btn btn-primary mb-3" href="clinicas/nueva">+ Nueva clínica</a>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_clinicas is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_clinicas.Count == 0)
+{
+    <p>No hay clínicas registradas todavía.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre comercial</th>
+                <th>Razón social</th>
+                <th>RNC</th>
+                <th>Plan</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var clinica in _clinicas)
+            {
+                <tr>
+                    <td>@clinica.NombreComercial</td>
+                    <td>@clinica.RazonSocial</td>
+                    <td>@clinica.Rnc</td>
+                    <td>@clinica.PlanSuscripcion</td>
+                    <td>
+                        @if (clinica.Activo)
+                        {
+                            <span class="badge bg-success">Activa</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactiva</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="@($"clinicas/{clinica.Id}/editar")">Editar</a>
+                        &nbsp;·&nbsp;
+                        @if (clinica.Activo)
+                        {
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(clinica.Id)">Desactivar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(clinica.Id)">Reactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<ClinicaDto>? _clinicas;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _clinicas = await ClinicaService.ListarAsync();
+    }
+
+    private async Task DesactivarAsync(Guid clinicaId)
+    {
+        var resultado = await ClinicaService.DesactivarAsync(clinicaId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task ReactivarAsync(Guid clinicaId)
+    {
+        var resultado = await ClinicaService.ReactivarAsync(clinicaId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}

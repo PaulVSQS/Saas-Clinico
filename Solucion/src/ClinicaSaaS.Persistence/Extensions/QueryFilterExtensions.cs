@@ -33,6 +33,22 @@ internal static class QueryFilterExtensions
             (!context.TenantContext.ClinicaId.HasValue || e.ClinicaId == context.TenantContext.ClinicaId));
     }
 
+    /// <summary>
+    /// Variante para entidades que SON su propio tenant (hoy, únicamente Clinica: su
+    /// <c>ClinicaId</c> es una propiedad C# calculada — <c>ClinicaId => Id</c> — marcada
+    /// <c>Ignore()</c> en su configuración, no una columna real; EF Core no puede traducir un
+    /// filtro que la referencie directamente. Aquí se filtra por <c>Id</c>, que sí es la
+    /// columna mapeada y produce exactamente el mismo resultado lógico (para Clinica,
+    /// Id == ClinicaId siempre).
+    /// </summary>
+    public static void AplicarFiltroTenantYSoftDeletePorId<TEntity>(this ModelBuilder modelBuilder, ClinicaSaaSDbContext context)
+        where TEntity : class, ITenantEntity, ISoftDeletable
+    {
+        modelBuilder.Entity<TEntity>().HasQueryFilter(e =>
+            !e.EstaEliminado &&
+            (!context.TenantContext.ClinicaId.HasValue || e.Id == context.TenantContext.ClinicaId));
+    }
+
     public static void AplicarFiltroSoloTenant<TEntity>(this ModelBuilder modelBuilder, ClinicaSaaSDbContext context)
         where TEntity : class, ITenantEntity
     {
