@@ -1,0 +1,142 @@
+@page "/doctores/nuevo"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Application.Common.Interfaces
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Application.Usuarios
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IDoctorService DoctorService
+@inject IUsuarioService UsuarioService
+@inject IClinicaService ClinicaService
+@inject ITenantContext TenantContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nuevo doctor</PageTitle>
+
+<h1>Nuevo doctor</h1>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_usuarios is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    <EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+        <div class="mb-3" style="max-width: 500px;">
+            <label for="usuario" class="form-label">Usuario</label>
+            <InputSelect id="usuario" class="form-select" @bind-Value="_modelo.UsuarioId">
+                <option value="">-- Selecciona un usuario --</option>
+                @foreach (var usuario in _usuarios)
+                {
+                    <option value="@usuario.Id">@usuario.NombreCompleto (@usuario.Email)</option>
+                }
+            </InputSelect>
+            <div class="form-text">
+                El usuario debe existir de antes (módulo Usuarios) — aquí solo se vincula a esta clínica como doctor.
+            </div>
+        </div>
+
+        @if (TenantContext.ClinicaId is null)
+        {
+            <div class="mb-3" style="max-width: 500px;">
+                <label for="clinica" class="form-label">Clínica</label>
+                <InputSelect id="clinica" class="form-select" @bind-Value="_modelo.ClinicaId">
+                    <option value="">-- Selecciona una clínica --</option>
+                    @foreach (var clinica in _clinicas!)
+                    {
+                        <option value="@clinica.Id">@clinica.NombreComercial</option>
+                    }
+                </InputSelect>
+                <div class="form-text">
+                    Como SuperAdmin SaaS puedes elegir la clínica; un AdminClinica normal registra
+                    doctores directo en su propia clínica, sin este selector.
+                </div>
+            </div>
+        }
+
+        <div class="mb-3" style="max-width: 500px;">
+            <label for="especialidad" class="form-label">Especialidad</label>
+            <InputText id="especialidad" class="form-control" @bind-Value="_modelo.Especialidad" placeholder="Ej. Pediatría" />
+        </div>
+
+        <div class="mb-3" style="max-width: 300px;">
+            <label for="exequatur" class="form-label">Número de exequátur (opcional)</label>
+            <InputText id="exequatur" class="form-control" @bind-Value="_modelo.NumeroExequatur" />
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardando">Registrar doctor</button>
+        <a class="btn btn-link" href="doctores">Cancelar</a>
+    </EditForm>
+}
+
+@code {
+    private IReadOnlyList<UsuarioDto>? _usuarios;
+    private IReadOnlyList<ClinicaDto>? _clinicas;
+    private readonly ModeloNuevoDoctor _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Igual que en Empleados/Nuevo.razor (Fase 6, Módulo 3) y Usuarios/Editar.razor
+        // (Módulo 2): nunca cargar en paralelo dos operaciones que usan servicios de
+        // Application — comparten la misma instancia Scoped de ClinicaSaaSDbContext y EF Core
+        // no soporta dos operaciones async simultáneas sobre el mismo DbContext. Secuencial,
+        // siempre.
+        _usuarios = await UsuarioService.ListarAsync();
+
+        if (TenantContext.ClinicaId is null)
+            _clinicas = await ClinicaService.ListarAsync();
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        if (!Guid.TryParse(_modelo.UsuarioId, out var usuarioId))
+        {
+            _mensajeError = "Selecciona un usuario.";
+            _guardando = false;
+            return;
+        }
+
+        Guid clinicaId;
+        if (TenantContext.ClinicaId is Guid clinicaActiva)
+        {
+            clinicaId = clinicaActiva;
+        }
+        else if (!Guid.TryParse(_modelo.ClinicaId, out clinicaId))
+        {
+            _mensajeError = "Selecciona una clínica.";
+            _guardando = false;
+            return;
+        }
+
+        var resultado = await DoctorService.RegistrarAsync(
+            new RegistrarDoctorRequest(usuarioId, clinicaId, _modelo.Especialidad, _modelo.NumeroExequatur));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo("doctores");
+    }
+
+    private sealed class ModeloNuevoDoctor
+    {
+        public string UsuarioId { get; set; } = string.Empty;
+        public string ClinicaId { get; set; } = string.Empty;
+        public string Especialidad { get; set; } = string.Empty;
+        public string? NumeroExequatur { get; set; }
+    }
+}

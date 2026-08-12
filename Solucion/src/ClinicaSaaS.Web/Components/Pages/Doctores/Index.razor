@@ -1,0 +1,109 @@
+@page "/doctores"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IDoctorService DoctorService
+
+<PageTitle>Doctores</PageTitle>
+
+<h1>Doctores</h1>
+
+<p>
+    Perfil profesional de los doctores de la clínica — protegido con la Policy
+    <code>Rol:AdminClinica</code> (Fase 5), mismo criterio que Empleados (Módulo 3). La gestión
+    de horarios de cada doctor (bloques de disponibilidad) es un módulo aparte (Módulo 6 —
+    Horarios) y no vive aquí.
+</p>
+
+<a class="btn btn-primary mb-3" href="doctores/nuevo">+ Nuevo doctor</a>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_doctores is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_doctores.Count == 0)
+{
+    <p>No hay doctores registrados todavía.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Correo electrónico</th>
+                <th>Clínica</th>
+                <th>Especialidad</th>
+                <th>Exequátur</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var doctor in _doctores)
+            {
+                <tr>
+                    <td>@doctor.NombreUsuario</td>
+                    <td>@doctor.EmailUsuario</td>
+                    <td>@doctor.NombreClinica</td>
+                    <td>@doctor.Especialidad</td>
+                    <td>@(doctor.NumeroExequatur ?? "—")</td>
+                    <td>
+                        @if (doctor.Activo)
+                        {
+                            <span class="badge bg-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactivo</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="@($"doctores/{doctor.Id}/editar")">Editar</a>
+                        &nbsp;·&nbsp;
+                        @if (doctor.Activo)
+                        {
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(doctor.Id)">Desactivar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(doctor.Id)">Reactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<DoctorDto>? _doctores;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _doctores = await DoctorService.ListarAsync();
+    }
+
+    private async Task DesactivarAsync(Guid doctorId)
+    {
+        var resultado = await DoctorService.DesactivarAsync(doctorId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task ReactivarAsync(Guid doctorId)
+    {
+        var resultado = await DoctorService.ReactivarAsync(doctorId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}

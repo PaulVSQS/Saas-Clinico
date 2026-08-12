@@ -48,6 +48,16 @@ public sealed class Doctor : SoftDeleteEntity, ITenantEntity
         return new Doctor(id, usuarioId, clinicaId, especialidad.Trim()) { NumeroExequatur = numeroExequatur?.Trim() };
     }
 
+    public Result ActualizarDatos(string especialidad, string? numeroExequatur)
+    {
+        if (string.IsNullOrWhiteSpace(especialidad))
+            return new Error("Doctor.EspecialidadRequerida", "La especialidad es requerida.");
+
+        Especialidad = especialidad.Trim();
+        NumeroExequatur = numeroExequatur?.Trim();
+        return Result.Exitoso();
+    }
+
     /// <summary>
     /// Agrega un bloque de horario validando que no se solape con ninguno de los bloques
     /// activos existentes de este mismo doctor. La validación contra citas/horarios de OTROS
