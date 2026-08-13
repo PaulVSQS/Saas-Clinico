@@ -37,6 +37,22 @@ public sealed class Consultorio : SoftDeleteEntity, ITenantEntity
         return new Consultorio(id, clinicaId, nombre.Trim()) { Piso = piso?.Trim() };
     }
 
+    /// <summary>
+    /// Módulo 5 de Fase 6 — mismo patrón que Doctor.ActualizarDatos/Empleado.ActualizarDatos:
+    /// solo los datos editables del perfil (aquí: nombre y piso); ClinicaId nunca se reasigna
+    /// desde este método — para "mover" un consultorio a otra clínica habría que dar de baja
+    /// este y crear uno nuevo, igual que con Doctor/Empleado y su Usuario/Clínica.
+    /// </summary>
+    public Result ActualizarDatos(string nombre, string? piso)
+    {
+        if (string.IsNullOrWhiteSpace(nombre))
+            return new Error("Consultorio.NombreRequerido", "El nombre del consultorio es requerido.");
+
+        Nombre = nombre.Trim();
+        Piso = piso?.Trim();
+        return Result.Exitoso();
+    }
+
     public Result Desactivar()
     {
         if (!Activo)

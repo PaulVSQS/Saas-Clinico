@@ -1,0 +1,104 @@
+@page "/consultorios"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Consultorios
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IConsultorioService ConsultorioService
+
+<PageTitle>Consultorios</PageTitle>
+
+<h1>Consultorios</h1>
+
+<p>
+    Espacios físicos de la clínica — protegido con la Policy <code>Rol:AdminClinica</code>
+    (Fase 5), mismo criterio que Empleados y Doctores. La gestión de equipamiento y de horarios
+    de doctores por consultorio son módulos aparte y no viven aquí.
+</p>
+
+<a class="btn btn-primary mb-3" href="consultorios/nuevo">+ Nuevo consultorio</a>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_consultorios is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_consultorios.Count == 0)
+{
+    <p>No hay consultorios registrados todavía.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Piso</th>
+                <th>Clínica</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var consultorio in _consultorios)
+            {
+                <tr>
+                    <td>@consultorio.Nombre</td>
+                    <td>@(consultorio.Piso ?? "—")</td>
+                    <td>@consultorio.NombreClinica</td>
+                    <td>
+                        @if (consultorio.Activo)
+                        {
+                            <span class="badge bg-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactivo</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="@($"consultorios/{consultorio.Id}/editar")">Editar</a>
+                        &nbsp;·&nbsp;
+                        @if (consultorio.Activo)
+                        {
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(consultorio.Id)">Desactivar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(consultorio.Id)">Reactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<ConsultorioDto>? _consultorios;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _consultorios = await ConsultorioService.ListarAsync();
+    }
+
+    private async Task DesactivarAsync(Guid consultorioId)
+    {
+        var resultado = await ConsultorioService.DesactivarAsync(consultorioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task ReactivarAsync(Guid consultorioId)
+    {
+        var resultado = await ConsultorioService.ReactivarAsync(consultorioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}

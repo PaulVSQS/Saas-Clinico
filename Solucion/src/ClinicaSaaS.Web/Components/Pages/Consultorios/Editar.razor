@@ -1,0 +1,102 @@
+@page "/consultorios/{ConsultorioId:guid}/editar"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Consultorios
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IConsultorioService ConsultorioService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Editar consultorio</PageTitle>
+
+@if (_consultorio is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese consultorio no existe.</p>
+    <a class="btn btn-link" href="consultorios">Volver al listado</a>
+}
+else
+{
+    var consultorio = _consultorio!;
+
+    <h1>Editar consultorio @consultorio.Nombre</h1>
+
+    <dl class="row">
+        <dt class="col-sm-2">Clínica</dt>
+        <dd class="col-sm-10">@consultorio.NombreClinica</dd>
+    </dl>
+    <p><em>La clínica no se edita aquí — para eso hay que dar de baja y registrar el consultorio en la otra clínica.</em></p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+    @if (_mensajeExito is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExito</div>
+    }
+
+    <EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+        <div class="mb-3" style="max-width: 500px;">
+            <label for="nombre" class="form-label">Nombre</label>
+            <InputText id="nombre" class="form-control" @bind-Value="_modelo.Nombre" />
+        </div>
+
+        <div class="mb-3" style="max-width: 300px;">
+            <label for="piso" class="form-label">Piso (opcional)</label>
+            <InputText id="piso" class="form-control" @bind-Value="_modelo.Piso" />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        <a class="btn btn-link" href="consultorios">Volver al listado</a>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public Guid ConsultorioId { get; set; }
+
+    private ConsultorioDto? _consultorio;
+    private bool _noEncontrado;
+    private string? _mensajeError;
+    private string? _mensajeExito;
+    private readonly ModeloDatosConsultorio _modelo = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _consultorio = await ConsultorioService.ObtenerAsync(ConsultorioId);
+        if (_consultorio is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        _modelo.Nombre = _consultorio.Nombre;
+        _modelo.Piso = _consultorio.Piso;
+    }
+
+    private async Task GuardarAsync()
+    {
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        var resultado = await ConsultorioService.ActualizarDatosAsync(
+            ConsultorioId, new ActualizarDatosConsultorioRequest(_modelo.Nombre, _modelo.Piso));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Datos actualizados.";
+    }
+
+    private sealed class ModeloDatosConsultorio
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public string? Piso { get; set; }
+    }
+}
