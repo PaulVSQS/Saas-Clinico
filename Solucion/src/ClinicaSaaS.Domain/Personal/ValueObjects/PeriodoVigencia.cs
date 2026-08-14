@@ -27,4 +27,11 @@ public sealed record PeriodoVigencia
     }
 
     public bool VigenteEn(DateOnly fecha) => fecha >= FechaInicio && (FechaFin is null || fecha <= FechaFin);
+
+    /// <summary>
+    /// Nueva instancia con los mismos valores. Mismo motivo que BloqueHorario.Clonar(): Vigencia
+    /// también está mapeada como owned type (OwnsOne), y no puede compartirse entre varios
+    /// HorarioDoctor sin que EF Core pierda los datos de uno de ellos al guardar.
+    /// </summary>
+    internal PeriodoVigencia Clonar() => new(FechaInicio, FechaFin);
 }

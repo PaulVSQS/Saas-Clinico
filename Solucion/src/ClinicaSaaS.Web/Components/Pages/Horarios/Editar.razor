@@ -1,0 +1,179 @@
+@page "/horarios/{DoctorId:guid}/{HorarioId:guid}/editar"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Consultorios
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Application.Horarios
+@using ClinicaSaaS.Domain.Personal.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IDoctorService DoctorService
+@inject IConsultorioService ConsultorioService
+@inject IHorarioService HorarioService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Editar bloque de horario</PageTitle>
+
+@if (_doctor is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese doctor o ese bloque de horario no existe.</p>
+    <a class="btn btn-link" href="horarios">Volver al listado</a>
+}
+else
+{
+    var doctor = _doctor!;
+
+    <h1>Editar bloque de horario</h1>
+    <p>@doctor.NombreUsuario — @doctor.Especialidad</p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+
+    <EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+        <div class="mb-3" style="max-width: 300px;">
+            <label for="tipoHorario" class="form-label">Tipo de horario</label>
+            <InputSelect id="tipoHorario" class="form-select" @bind-Value="_modelo.TipoHorario">
+                <option value="@TipoHorario.Fijo">Fijo</option>
+                <option value="@TipoHorario.Rotativo">Rotativo</option>
+                <option value="@TipoHorario.PorRango">Por rango de fechas</option>
+            </InputSelect>
+        </div>
+
+        @if (_modelo.TipoHorario != TipoHorario.PorRango)
+        {
+            <div class="mb-3" style="max-width: 300px;">
+                <label for="diaSemana" class="form-label">Día de la semana</label>
+                <InputSelect id="diaSemana" class="form-select" @bind-Value="_modelo.DiaSemana">
+                    <option value="@DayOfWeek.Monday">Lunes</option>
+                    <option value="@DayOfWeek.Tuesday">Martes</option>
+                    <option value="@DayOfWeek.Wednesday">Miércoles</option>
+                    <option value="@DayOfWeek.Thursday">Jueves</option>
+                    <option value="@DayOfWeek.Friday">Viernes</option>
+                    <option value="@DayOfWeek.Saturday">Sábado</option>
+                    <option value="@DayOfWeek.Sunday">Domingo</option>
+                </InputSelect>
+            </div>
+        }
+
+        <div class="row" style="max-width: 500px;">
+            <div class="col mb-3">
+                <label for="horaInicio" class="form-label">Hora de inicio</label>
+                <InputDate id="horaInicio" class="form-control" Type="InputDateType.Time" @bind-Value="_modelo.HoraInicio" />
+            </div>
+            <div class="col mb-3">
+                <label for="horaFin" class="form-label">Hora de fin</label>
+                <InputDate id="horaFin" class="form-control" Type="InputDateType.Time" @bind-Value="_modelo.HoraFin" />
+            </div>
+        </div>
+
+        <div class="mb-3" style="max-width: 500px;">
+            <label for="consultorio" class="form-label">Consultorio (opcional)</label>
+            <InputSelect id="consultorio" class="form-select" @bind-Value="_modelo.ConsultorioId">
+                <option value="">-- Por definir / rotativo --</option>
+                @foreach (var consultorio in _consultorios!)
+                {
+                    <option value="@consultorio.Id">@consultorio.Nombre</option>
+                }
+            </InputSelect>
+        </div>
+
+        <div class="row" style="max-width: 500px;">
+            <div class="col mb-3">
+                <label for="inicioVigencia" class="form-label">Vigente desde</label>
+                <InputDate id="inicioVigencia" class="form-control" @bind-Value="_modelo.FechaInicioVigencia" />
+            </div>
+            <div class="col mb-3">
+                <label for="finVigencia" class="form-label">Vigente hasta (opcional)</label>
+                <InputDate id="finVigencia" class="form-control" @bind-Value="_modelo.FechaFinVigencia" />
+                <div class="form-text">Vacío = indefinido.</div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardando">Guardar cambios</button>
+        <a class="btn btn-link" href="@($"horarios/{DoctorId}")">Cancelar</a>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public Guid DoctorId { get; set; }
+
+    [Parameter]
+    public Guid HorarioId { get; set; }
+
+    private DoctorDto? _doctor;
+    private IReadOnlyList<ConsultorioDto>? _consultorios;
+    private bool _noEncontrado;
+    private readonly ModeloEditarHorario _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _doctor = await DoctorService.ObtenerAsync(DoctorId);
+        if (_doctor is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        var horarios = await HorarioService.ListarPorDoctorAsync(DoctorId);
+        var horario = horarios.FirstOrDefault(h => h.Id == HorarioId);
+        if (horario is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        var todosLosConsultorios = await ConsultorioService.ListarAsync();
+        _consultorios = todosLosConsultorios
+            .Where(c => c.ClinicaId == _doctor.ClinicaId && c.Activo)
+            .ToList();
+
+        _modelo.ConsultorioId = horario.ConsultorioId?.ToString() ?? string.Empty;
+        _modelo.TipoHorario = horario.TipoHorario;
+        _modelo.DiaSemana = horario.DiaSemana ?? DayOfWeek.Monday;
+        _modelo.HoraInicio = horario.HoraInicio;
+        _modelo.HoraFin = horario.HoraFin;
+        _modelo.FechaInicioVigencia = horario.FechaInicioVigencia;
+        _modelo.FechaFinVigencia = horario.FechaFinVigencia;
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        Guid? consultorioId = Guid.TryParse(_modelo.ConsultorioId, out var idConsultorio) ? idConsultorio : null;
+        DayOfWeek? diaSemana = _modelo.TipoHorario == TipoHorario.PorRango ? null : _modelo.DiaSemana;
+
+        var resultado = await HorarioService.ActualizarAsync(DoctorId, HorarioId, new ActualizarHorarioRequest(
+            consultorioId, _modelo.TipoHorario, diaSemana,
+            _modelo.HoraInicio, _modelo.HoraFin, _modelo.FechaInicioVigencia, _modelo.FechaFinVigencia));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo($"horarios/{DoctorId}");
+    }
+
+    private sealed class ModeloEditarHorario
+    {
+        public string ConsultorioId { get; set; } = string.Empty;
+        public TipoHorario TipoHorario { get; set; } = TipoHorario.Fijo;
+        public DayOfWeek DiaSemana { get; set; } = DayOfWeek.Monday;
+        public TimeOnly HoraInicio { get; set; } = new(8, 0);
+        public TimeOnly HoraFin { get; set; } = new(12, 0);
+        public DateOnly FechaInicioVigencia { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public DateOnly? FechaFinVigencia { get; set; }
+    }
+}

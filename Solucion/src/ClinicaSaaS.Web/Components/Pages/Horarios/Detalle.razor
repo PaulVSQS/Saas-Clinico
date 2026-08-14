@@ -1,0 +1,174 @@
+@page "/horarios/{DoctorId:guid}"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Application.Horarios
+@using ClinicaSaaS.Domain.Personal.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IDoctorService DoctorService
+@inject IHorarioService HorarioService
+
+<PageTitle>Horarios del doctor</PageTitle>
+
+@if (_doctor is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese doctor no existe.</p>
+    <a class="btn btn-link" href="horarios">Volver al listado</a>
+}
+else
+{
+    var doctor = _doctor!;
+
+    <h1>Horarios de @doctor.NombreUsuario</h1>
+    <p>@doctor.Especialidad — @doctor.NombreClinica</p>
+
+    <a class="btn btn-primary mb-3" href="@($"horarios/{DoctorId}/nuevo")">+ Nuevo bloque de horario</a>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+
+    @if (_horarios is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_horarios.Count == 0)
+    {
+        <p>Este doctor no tiene bloques de horario registrados todavía.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Día</th>
+                    <th>Bloque</th>
+                    <th>Consultorio</th>
+                    <th>Vigencia</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var horario in _horarios)
+                {
+                    <tr>
+                        <td>@EtiquetaTipo(horario.TipoHorario)</td>
+                        <td>@EtiquetaDia(horario.DiaSemana)</td>
+                        <td>@horario.HoraInicio.ToString("HH:mm") - @horario.HoraFin.ToString("HH:mm")</td>
+                        <td>@(horario.NombreConsultorio ?? "Por definir")</td>
+                        <td>
+                            @horario.FechaInicioVigencia.ToString("dd/MM/yyyy")
+                            @if (horario.FechaFinVigencia is { } fechaFin)
+                            {
+                                <text> — @fechaFin.ToString("dd/MM/yyyy")</text>
+                            }
+                            else
+                            {
+                                <text> — indefinido</text>
+                            }
+                        </td>
+                        <td>
+                            @if (horario.Activo)
+                            {
+                                <span class="badge bg-success">Activo</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactivo</span>
+                            }
+                        </td>
+                        <td>
+                            <a href="@($"horarios/{DoctorId}/{horario.Id}/editar")">Editar</a>
+                            &nbsp;·&nbsp;
+                            @if (horario.Activo)
+                            {
+                                <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(horario.Id)">Desactivar</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(horario.Id)">Reactivar</button>
+                                <text> · </text>
+                                <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => EliminarAsync(horario.Id)">Eliminar</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <a class="btn btn-link" href="horarios">Volver al listado de doctores</a>
+}
+
+@code {
+    [Parameter]
+    public Guid DoctorId { get; set; }
+
+    private DoctorDto? _doctor;
+    private IReadOnlyList<HorarioDto>? _horarios;
+    private bool _noEncontrado;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _doctor = await DoctorService.ObtenerAsync(DoctorId);
+        if (_doctor is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        _horarios = await HorarioService.ListarPorDoctorAsync(DoctorId);
+    }
+
+    private async Task DesactivarAsync(Guid horarioId)
+    {
+        var resultado = await HorarioService.DesactivarAsync(DoctorId, horarioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task ReactivarAsync(Guid horarioId)
+    {
+        var resultado = await HorarioService.ReactivarAsync(DoctorId, horarioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task EliminarAsync(Guid horarioId)
+    {
+        var resultado = await HorarioService.EliminarAsync(DoctorId, horarioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private static string EtiquetaTipo(TipoHorario tipo) => tipo switch
+    {
+        TipoHorario.Fijo => "Fijo",
+        TipoHorario.Rotativo => "Rotativo",
+        TipoHorario.PorRango => "Por rango de fechas",
+        _ => tipo.ToString()
+    };
+
+    private static string EtiquetaDia(DayOfWeek? dia) => dia switch
+    {
+        null => "—",
+        DayOfWeek.Sunday => "Domingo",
+        DayOfWeek.Monday => "Lunes",
+        DayOfWeek.Tuesday => "Martes",
+        DayOfWeek.Wednesday => "Miércoles",
+        DayOfWeek.Thursday => "Jueves",
+        DayOfWeek.Friday => "Viernes",
+        DayOfWeek.Saturday => "Sábado",
+        _ => dia.ToString()!
+    };
+}

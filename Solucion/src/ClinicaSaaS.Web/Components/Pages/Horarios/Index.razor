@@ -1,0 +1,71 @@
+@page "/horarios"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IDoctorService DoctorService
+
+<PageTitle>Horarios</PageTitle>
+
+<h1>Horarios de doctores</h1>
+
+<p>
+    El horario nunca existe fuera del contexto de un doctor — selecciona uno para ver y gestionar
+    sus bloques de disponibilidad. Protegido con la Policy <code>Rol:AdminClinica</code> (Fase 5),
+    mismo criterio que Doctores y Consultorios.
+</p>
+
+@if (_doctores is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_doctores.Count == 0)
+{
+    <p>No hay doctores registrados todavía. Regístralos primero en el módulo Doctores.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Doctor</th>
+                <th>Especialidad</th>
+                <th>Clínica</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var doctor in _doctores)
+            {
+                <tr>
+                    <td>@doctor.NombreUsuario</td>
+                    <td>@doctor.Especialidad</td>
+                    <td>@doctor.NombreClinica</td>
+                    <td>
+                        @if (doctor.Activo)
+                        {
+                            <span class="badge bg-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactivo</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="@($"horarios/{doctor.Id}")">Ver horarios</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<DoctorDto>? _doctores;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _doctores = await DoctorService.ListarAsync();
+    }
+}
