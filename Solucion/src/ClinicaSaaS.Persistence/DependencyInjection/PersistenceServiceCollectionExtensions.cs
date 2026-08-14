@@ -1,4 +1,5 @@
 using ClinicaSaaS.Application.Common.Interfaces;
+using ClinicaSaaS.Domain.Personal;
 using ClinicaSaaS.Persistence.Interceptors;
 using ClinicaSaaS.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,14 @@ public static class PersistenceServiceCollectionExtensions
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IRepositorio<>), typeof(RepositorioBase<>));
+
+        // Doctor necesita su propio repositorio (ver RepositorioDoctor) porque Horarios es una
+        // colección hija que RepositorioBase no puede cargar de forma genérica. Se registra
+        // DESPUÉS del genérico a propósito: en el contenedor de DI de .NET, cuando hay más de un
+        // registro para el mismo tipo de servicio, gana el último — así IRepositorio<Doctor> usa
+        // RepositorioDoctor, y todos los demás agregados (Clínica, Usuario, Empleado,
+        // Consultorio) siguen resolviendo a RepositorioBase<T> sin cambios.
+        services.AddScoped<IRepositorio<Doctor>, RepositorioDoctor>();
 
         return services;
     }
