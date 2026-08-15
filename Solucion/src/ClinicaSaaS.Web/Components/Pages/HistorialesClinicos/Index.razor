@@ -1,0 +1,88 @@
+@page "/historiales-clinicos"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+
+<PageTitle>Historia Clínica</PageTitle>
+
+<h1>Historia Clínica</h1>
+
+<p>
+    Selecciona un paciente para ver y agregar entradas a su expediente — protegido con la Policy
+    <code>Rol:AdminClinica</code> (Fase 5), mismo criterio que los módulos anteriores.
+</p>
+
+<div class="mb-3" style="max-width: 500px;">
+    <input type="search" class="form-control" placeholder="Buscar por nombre o documento..."
+           value="@_filtro" @oninput="OnFiltroCambiado" />
+</div>
+
+@if (_pacientes is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_pacientes.Count == 0)
+{
+    <p>@(string.IsNullOrWhiteSpace(_filtro) ? "No hay pacientes registrados todavía." : "Ningún paciente coincide con la búsqueda.")</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Paciente</th>
+                <th>Documento</th>
+                <th>Clínica</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var paciente in _pacientes)
+            {
+                <tr>
+                    <td>@paciente.NombreCompleto</td>
+                    <td>@(paciente.NumeroDocumento ?? "—")</td>
+                    <td>@paciente.NombreClinica</td>
+                    <td><a href="@($"historiales-clinicos/{paciente.Id}")">Ver historial</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<PacienteDto>? _pacientes;
+    private string _filtro = string.Empty;
+    private CancellationTokenSource? _debounce;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _pacientes = await PacienteService.ListarAsync(_filtro);
+    }
+
+    private async Task OnFiltroCambiado(ChangeEventArgs e)
+    {
+        _filtro = e.Value?.ToString() ?? string.Empty;
+
+        // Mismo debounce de 300ms que Pacientes/Index.razor (Módulo 7) — no dispara una
+        // consulta a SQL Server por cada tecla.
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+
+        try
+        {
+            await Task.Delay(300, token);
+            if (!token.IsCancellationRequested)
+                await CargarAsync();
+        }
+        catch (TaskCanceledException)
+        {
+            // Búsqueda superada por una tecla más reciente — ignorar.
+        }
+    }
+}

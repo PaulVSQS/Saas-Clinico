@@ -1,0 +1,316 @@
+@page "/historiales-clinicos/{PacienteId:guid}"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Citas
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Application.HistorialesClinicos
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+@inject IDoctorService DoctorService
+@inject ICitaService CitaService
+@inject IHistorialClinicoService HistorialClinicoService
+
+<PageTitle>Historial clínico</PageTitle>
+
+@if (_paciente is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese paciente no existe.</p>
+    <a class="btn btn-link" href="historiales-clinicos">Volver al listado</a>
+}
+else
+{
+    var paciente = _paciente!;
+
+    <h1>Historial clínico de @paciente.NombreCompleto</h1>
+    <p>@paciente.NombreClinica</p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+    @if (_mensajeExito is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExito</div>
+    }
+
+    <h2 class="h4">Nueva entrada</h2>
+    <p><em>Corregir un dato es agregar una entrada nueva — nunca se edita una entrada ya registrada.</em></p>
+
+    <EditForm Model="_modelo" OnValidSubmit="GuardarEntradaAsync">
+        <div class="row" style="max-width: 700px;">
+            <div class="col mb-3">
+                <label for="doctor" class="form-label">Doctor</label>
+                <InputSelect id="doctor" class="form-select" @bind-Value="_modelo.DoctorId">
+                    <option value="">-- Selecciona un doctor --</option>
+                    @foreach (var doctor in _doctores ?? [])
+                    {
+                        <option value="@doctor.Id">@doctor.NombreUsuario — @doctor.Especialidad</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col mb-3">
+                <label for="cita" class="form-label">Cita relacionada (opcional)</label>
+                <InputSelect id="cita" class="form-select" @bind-Value="_modelo.CitaId">
+                    <option value="">-- Sin cita relacionada --</option>
+                    @foreach (var cita in _citas ?? [])
+                    {
+                        <option value="@cita.Id">@cita.FechaHoraInicio.ToString("dd/MM/yyyy HH:mm") — @cita.NombreDoctor</option>
+                    }
+                </InputSelect>
+            </div>
+        </div>
+
+        <div class="mb-3" style="max-width: 700px;">
+            <label for="motivo" class="form-label">Motivo de consulta</label>
+            <InputText id="motivo" class="form-control" @bind-Value="_modelo.MotivoConsulta" />
+        </div>
+
+        <div class="mb-3" style="max-width: 700px;">
+            <label for="diagnostico" class="form-label">Diagnóstico</label>
+            <InputTextArea id="diagnostico" class="form-control" rows="3" @bind-Value="_modelo.Diagnostico" />
+        </div>
+
+        <div class="mb-3" style="max-width: 700px;">
+            <label for="tratamiento" class="form-label">Tratamiento</label>
+            <InputTextArea id="tratamiento" class="form-control" rows="3" @bind-Value="_modelo.Tratamiento" />
+        </div>
+
+        <div class="mb-3" style="max-width: 700px;">
+            <label for="notas" class="form-label">Notas</label>
+            <InputTextArea id="notas" class="form-control" rows="3" @bind-Value="_modelo.Notas" />
+        </div>
+
+        <fieldset class="mb-3" style="max-width: 700px;">
+            <legend class="h6">Signos vitales (opcional)</legend>
+            <div class="row">
+                <div class="col-4 mb-2">
+                    <label for="presionSistolica" class="form-label">Presión sistólica</label>
+                    <InputNumber id="presionSistolica" class="form-control" @bind-Value="_modelo.PresionSistolica" />
+                </div>
+                <div class="col-4 mb-2">
+                    <label for="presionDiastolica" class="form-label">Presión diastólica</label>
+                    <InputNumber id="presionDiastolica" class="form-control" @bind-Value="_modelo.PresionDiastolica" />
+                </div>
+                <div class="col-4 mb-2">
+                    <label for="temperatura" class="form-label">Temperatura (°C)</label>
+                    <InputNumber id="temperatura" class="form-control" @bind-Value="_modelo.TemperaturaCelsius" />
+                </div>
+                <div class="col-4 mb-2">
+                    <label for="frecuenciaCardiaca" class="form-label">Frecuencia cardíaca</label>
+                    <InputNumber id="frecuenciaCardiaca" class="form-control" @bind-Value="_modelo.FrecuenciaCardiaca" />
+                </div>
+                <div class="col-4 mb-2">
+                    <label for="frecuenciaRespiratoria" class="form-label">Frecuencia respiratoria</label>
+                    <InputNumber id="frecuenciaRespiratoria" class="form-control" @bind-Value="_modelo.FrecuenciaRespiratoria" />
+                </div>
+                <div class="col-4 mb-2">
+                    <label for="saturacion" class="form-label">Saturación O2 (%)</label>
+                    <InputNumber id="saturacion" class="form-control" @bind-Value="_modelo.SaturacionOxigeno" />
+                </div>
+                <div class="col-4 mb-2">
+                    <label for="peso" class="form-label">Peso (kg)</label>
+                    <InputNumber id="peso" class="form-control" @bind-Value="_modelo.PesoKg" />
+                </div>
+                <div class="col-4 mb-2">
+                    <label for="talla" class="form-label">Talla (cm)</label>
+                    <InputNumber id="talla" class="form-control" @bind-Value="_modelo.TallaCm" />
+                </div>
+            </div>
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardando">Agregar entrada</button>
+    </EditForm>
+
+    <hr class="my-4" />
+
+    <h2 class="h4">Entradas registradas</h2>
+
+    @if (_entradas is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_entradas.Count == 0)
+    {
+        <p>Este paciente todavía no tiene entradas en su historial.</p>
+    }
+    else
+    {
+        @foreach (var entrada in _entradas)
+        {
+            <div class="card mb-3" style="max-width: 800px;">
+                <div class="card-header d-flex justify-content-between">
+                    <span><strong>Versión @entrada.Version</strong> — @entrada.FechaRegistro.ToString("dd/MM/yyyy HH:mm")</span>
+                    @if (entrada.EsVersionActual)
+                    {
+                        <span class="badge bg-success">Vigente</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary">Reemplazada</span>
+                    }
+                </div>
+                <div class="card-body">
+                    <p><strong>Doctor:</strong> @entrada.NombreDoctor</p>
+                    @if (entrada.MotivoConsulta is not null)
+                    {
+                        <p><strong>Motivo:</strong> @entrada.MotivoConsulta</p>
+                    }
+                    @if (entrada.Diagnostico is not null)
+                    {
+                        <p><strong>Diagnóstico:</strong> @entrada.Diagnostico</p>
+                    }
+                    @if (entrada.Tratamiento is not null)
+                    {
+                        <p><strong>Tratamiento:</strong> @entrada.Tratamiento</p>
+                    }
+                    @if (entrada.Notas is not null)
+                    {
+                        <p><strong>Notas:</strong> @entrada.Notas</p>
+                    }
+                    @if (entrada.SignosVitales is { } sv)
+                    {
+                        <p class="mb-0"><strong>Signos vitales:</strong> @EtiquetaSignosVitales(sv)</p>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    <a class="btn btn-link" href="historiales-clinicos">Volver al listado</a>
+}
+
+@code {
+    [Parameter]
+    public Guid PacienteId { get; set; }
+
+    private PacienteDto? _paciente;
+    private bool _noEncontrado;
+    private IReadOnlyList<DoctorDto>? _doctores;
+    private IReadOnlyList<CitaDto>? _citas;
+    private IReadOnlyList<EntradaHistorialClinicoDto>? _entradas;
+    private readonly ModeloNuevaEntrada _modelo = new();
+    private string? _mensajeError;
+    private string? _mensajeExito;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _paciente = await PacienteService.ObtenerAsync(PacienteId);
+        if (_paciente is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        var todosLosDoctores = await DoctorService.ListarAsync();
+        _doctores = todosLosDoctores.Where(d => d.ClinicaId == _paciente.ClinicaId && d.Activo).ToList();
+
+        _citas = await CitaService.ListarPorPacienteAsync(PacienteId);
+        _entradas = await HistorialClinicoService.ListarEntradasPorPacienteAsync(PacienteId);
+    }
+
+    private async Task GuardarEntradaAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        if (!Guid.TryParse(_modelo.DoctorId, out var doctorId))
+        {
+            _mensajeError = "Selecciona un doctor.";
+            _guardando = false;
+            return;
+        }
+
+        Guid? citaId = Guid.TryParse(_modelo.CitaId, out var idCita) ? idCita : null;
+
+        SignosVitalesDto? signosVitales = null;
+        if (_modelo.PresionSistolica is not null || _modelo.PresionDiastolica is not null || _modelo.TemperaturaCelsius is not null ||
+            _modelo.FrecuenciaCardiaca is not null || _modelo.FrecuenciaRespiratoria is not null || _modelo.SaturacionOxigeno is not null ||
+            _modelo.PesoKg is not null || _modelo.TallaCm is not null)
+        {
+            signosVitales = new SignosVitalesDto(
+                _modelo.PresionSistolica, _modelo.PresionDiastolica, _modelo.TemperaturaCelsius,
+                _modelo.FrecuenciaCardiaca, _modelo.FrecuenciaRespiratoria, _modelo.SaturacionOxigeno,
+                _modelo.PesoKg, _modelo.TallaCm);
+        }
+
+        var resultado = await HistorialClinicoService.AgregarEntradaAsync(new AgregarEntradaHistorialClinicoRequest(
+            PacienteId, doctorId, citaId, _modelo.MotivoConsulta, _modelo.Diagnostico,
+            _modelo.Tratamiento, _modelo.Notas, signosVitales));
+
+        _guardando = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Entrada agregada al historial.";
+        _modelo.Reiniciar();
+        _entradas = await HistorialClinicoService.ListarEntradasPorPacienteAsync(PacienteId);
+    }
+
+    private static string EtiquetaSignosVitales(SignosVitalesDto sv)
+    {
+        var partes = new List<string>();
+        if (sv.PresionSistolica is not null || sv.PresionDiastolica is not null)
+            partes.Add($"PA {sv.PresionSistolica?.ToString("0") ?? "—"}/{sv.PresionDiastolica?.ToString("0") ?? "—"}");
+        if (sv.TemperaturaCelsius is not null)
+            partes.Add($"Temp {sv.TemperaturaCelsius}°C");
+        if (sv.FrecuenciaCardiaca is not null)
+            partes.Add($"FC {sv.FrecuenciaCardiaca} lpm");
+        if (sv.FrecuenciaRespiratoria is not null)
+            partes.Add($"FR {sv.FrecuenciaRespiratoria} rpm");
+        if (sv.SaturacionOxigeno is not null)
+            partes.Add($"SpO2 {sv.SaturacionOxigeno}%");
+        if (sv.PesoKg is not null)
+            partes.Add($"Peso {sv.PesoKg} kg");
+        if (sv.TallaCm is not null)
+            partes.Add($"Talla {sv.TallaCm} cm");
+
+        return partes.Count == 0 ? "—" : string.Join(" · ", partes);
+    }
+
+    private sealed class ModeloNuevaEntrada
+    {
+        public string DoctorId { get; set; } = string.Empty;
+        public string CitaId { get; set; } = string.Empty;
+        public string? MotivoConsulta { get; set; }
+        public string? Diagnostico { get; set; }
+        public string? Tratamiento { get; set; }
+        public string? Notas { get; set; }
+        public decimal? PresionSistolica { get; set; }
+        public decimal? PresionDiastolica { get; set; }
+        public decimal? TemperaturaCelsius { get; set; }
+        public int? FrecuenciaCardiaca { get; set; }
+        public int? FrecuenciaRespiratoria { get; set; }
+        public decimal? SaturacionOxigeno { get; set; }
+        public decimal? PesoKg { get; set; }
+        public decimal? TallaCm { get; set; }
+
+        public void Reiniciar()
+        {
+            MotivoConsulta = null;
+            Diagnostico = null;
+            Tratamiento = null;
+            Notas = null;
+            PresionSistolica = null;
+            PresionDiastolica = null;
+            TemperaturaCelsius = null;
+            FrecuenciaCardiaca = null;
+            FrecuenciaRespiratoria = null;
+            SaturacionOxigeno = null;
+            PesoKg = null;
+            TallaCm = null;
+            // DoctorId y CitaId se dejan como estaban — es común encadenar varias entradas
+            // seguidas para el mismo doctor/cita.
+        }
+    }
+}

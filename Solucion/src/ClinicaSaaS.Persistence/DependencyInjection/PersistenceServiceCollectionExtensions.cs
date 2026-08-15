@@ -1,4 +1,5 @@
 using ClinicaSaaS.Application.Common.Interfaces;
+using ClinicaSaaS.Domain.Clinical;
 using ClinicaSaaS.Domain.Personal;
 using ClinicaSaaS.Domain.Scheduling.Interfaces;
 using ClinicaSaaS.Persistence.Interceptors;
@@ -16,9 +17,10 @@ namespace ClinicaSaaS.Persistence.DependencyInjection;
 
 /// <summary>
 /// Punto único de registro de todo lo que ofrece Persistence: el DbContext (con sus 4
-/// interceptores de Fase 3), el repositorio genérico (con la especialización de Doctor, Fase 6
-/// Módulo 6), el Unit of Work de Fase 4, y los Domain Services cuya implementación requiere
-/// acceso a datos (ValidadorDisponibilidadDoctor, Fase 6 Módulo 8). Mismo patrón que
+/// interceptores de Fase 3), el repositorio genérico (con las especializaciones de Doctor y
+/// HistorialClinico, que necesitan Include de colecciones hijas), el Unit of Work de Fase 4, y
+/// los Domain Services cuya implementación requiere acceso a datos
+/// (ValidadorDisponibilidadDoctor, Fase 6 Módulo 8). Mismo patrón que
 /// InfrastructureServiceCollectionExtensions.AddInfrastructure() en el otro proyecto.
 /// </summary>
 public static class PersistenceServiceCollectionExtensions
@@ -46,12 +48,15 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IRepositorio<>), typeof(RepositorioBase<>));
 
-        // Doctor necesita su propio repositorio (ver RepositorioDoctor) porque Horarios es una
-        // colección hija que RepositorioBase no puede cargar de forma genérica. Se registra
-        // DESPUÉS del genérico a propósito: en el contenedor de DI de .NET, cuando hay más de un
-        // registro para el mismo tipo de servicio, gana el último — así IRepositorio<Doctor> usa
-        // RepositorioDoctor, y todos los demás agregados siguen resolviendo a RepositorioBase<T>.
+        // Doctor y HistorialClinico necesitan su propio repositorio (ver RepositorioDoctor /
+        // RepositorioHistorialClinico) porque ambos tienen una colección de Entities hijas que
+        // RepositorioBase no puede cargar de forma genérica. Se registran DESPUÉS del genérico a
+        // propósito: en el contenedor de DI de .NET, cuando hay más de un registro para el mismo
+        // tipo de servicio, gana el último — así el resto de los agregados sigue resolviendo a
+        // RepositorioBase<T> sin cambios.
         services.AddScoped<IRepositorio<Doctor>, RepositorioDoctor>();
+        services.AddScoped<IRepositorio<HistorialClinico>, RepositorioHistorialClinico>();
+        services.AddScoped<IRepositorioHistorialClinico, RepositorioHistorialClinico>();
 
         // Módulo 8 de Fase 6: validar que un doctor no quede con dos citas simultáneas requiere
         // consultar otras Citas — el Domain Service (Scheduling.Interfaces) se implementa aquí.
