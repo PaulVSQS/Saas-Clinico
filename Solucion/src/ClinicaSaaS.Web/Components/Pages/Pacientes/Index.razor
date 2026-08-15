@@ -1,0 +1,110 @@
+@page "/pacientes"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+
+<PageTitle>Pacientes</PageTitle>
+
+<h1>Pacientes</h1>
+
+<p>
+    Datos personales del paciente — protegido con la Policy <code>Rol:AdminClinica</code>
+    (Fase 5). El expediente médico no vive aquí; eso es Historia Clínica (Módulo 9).
+</p>
+
+<div class="mb-3 d-flex gap-2 align-items-start" style="max-width: 700px;">
+    <a class="btn btn-primary text-nowrap" href="pacientes/nuevo">+ Nuevo paciente</a>
+    <div class="flex-grow-1">
+        <input type="search" class="form-control" placeholder="Buscar por nombre o documento..."
+               value="@_filtro" @oninput="OnFiltroCambiado" />
+    </div>
+</div>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_pacientes is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_pacientes.Count == 0)
+{
+    <p>@(string.IsNullOrWhiteSpace(_filtro) ? "No hay pacientes registrados todavía." : "Ningún paciente coincide con la búsqueda.")</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Documento</th>
+                <th>Teléfono</th>
+                <th>Clínica</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var paciente in _pacientes)
+            {
+                <tr>
+                    <td>@paciente.NombreCompleto</td>
+                    <td>@(paciente.NumeroDocumento ?? "—")</td>
+                    <td>@(paciente.Telefono ?? "—")</td>
+                    <td>@paciente.NombreClinica</td>
+                    <td>
+                        <a href="@($"pacientes/{paciente.Id}/editar")">Editar</a>
+                        &nbsp;·&nbsp;
+                        <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => EliminarAsync(paciente.Id)">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<PacienteDto>? _pacientes;
+    private string _filtro = string.Empty;
+    private string? _mensajeError;
+    private CancellationTokenSource? _debounce;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _pacientes = await PacienteService.ListarAsync(_filtro);
+    }
+
+    private async Task OnFiltroCambiado(ChangeEventArgs e)
+    {
+        _filtro = e.Value?.ToString() ?? string.Empty;
+
+        // Debounce simple: cancela la búsqueda anterior si el usuario sigue escribiendo, para no
+        // disparar una consulta a SQL Server por cada tecla.
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+
+        try
+        {
+            await Task.Delay(300, token);
+            if (!token.IsCancellationRequested)
+                await CargarAsync();
+        }
+        catch (TaskCanceledException)
+        {
+            // Búsqueda superada por una tecla más reciente — ignorar.
+        }
+    }
+
+    private async Task EliminarAsync(Guid pacienteId)
+    {
+        var resultado = await PacienteService.EliminarAsync(pacienteId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}

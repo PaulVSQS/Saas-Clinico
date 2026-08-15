@@ -1,0 +1,231 @@
+@page "/pacientes/{PacienteId:guid}/editar"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Domain.Personal.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Editar paciente</PageTitle>
+
+@if (_paciente is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese paciente no existe.</p>
+    <a class="btn btn-link" href="pacientes">Volver al listado</a>
+}
+else
+{
+    var paciente = _paciente!;
+
+    <h1>Editar paciente @paciente.NombreCompleto</h1>
+    <p><strong>Clínica:</strong> @paciente.NombreClinica</p>
+
+    @if (_mensajeErrorPersonales is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeErrorPersonales</div>
+    }
+    @if (_mensajeExitoPersonales is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExitoPersonales</div>
+    }
+
+    <h2 class="h4">Datos personales</h2>
+    <EditForm Model="_modeloPersonales" OnValidSubmit="GuardarDatosPersonalesAsync">
+        <div class="row" style="max-width: 700px;">
+            <div class="col mb-3">
+                <label for="nombres" class="form-label">Nombres</label>
+                <InputText id="nombres" class="form-control" @bind-Value="_modeloPersonales.Nombres" />
+            </div>
+            <div class="col mb-3">
+                <label for="apellidos" class="form-label">Apellidos</label>
+                <InputText id="apellidos" class="form-control" @bind-Value="_modeloPersonales.Apellidos" />
+            </div>
+        </div>
+
+        <div class="row" style="max-width: 700px;">
+            <div class="col mb-3">
+                <label for="tipoDocumento" class="form-label">Tipo de documento</label>
+                <InputSelect id="tipoDocumento" class="form-select" @bind-Value="_modeloPersonales.TipoDocumento">
+                    <option value="">-- Sin documento --</option>
+                    <option value="@TipoDocumentoIdentidad.Cedula">Cédula</option>
+                    <option value="@TipoDocumentoIdentidad.Pasaporte">Pasaporte</option>
+                    <option value="@TipoDocumentoIdentidad.ActaNacimiento">Acta de nacimiento (menor)</option>
+                </InputSelect>
+            </div>
+            <div class="col mb-3">
+                <label for="numeroDocumento" class="form-label">Número de documento</label>
+                <InputText id="numeroDocumento" class="form-control" @bind-Value="_modeloPersonales.NumeroDocumento" placeholder="Ej. 00112345678" />
+            </div>
+        </div>
+
+        <div class="row" style="max-width: 700px;">
+            <div class="col mb-3">
+                <label for="fechaNacimiento" class="form-label">Fecha de nacimiento</label>
+                <InputDate id="fechaNacimiento" class="form-control" @bind-Value="_modeloPersonales.FechaNacimiento" />
+            </div>
+            <div class="col mb-3">
+                <label for="genero" class="form-label">Género</label>
+                <InputSelect id="genero" class="form-select" @bind-Value="_modeloPersonales.Genero">
+                    <option value="">-- No especificado --</option>
+                    <option value="@Genero.Masculino">Masculino</option>
+                    <option value="@Genero.Femenino">Femenino</option>
+                </InputSelect>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardandoPersonales">Guardar datos personales</button>
+    </EditForm>
+
+    <hr class="my-4" />
+
+    @if (_mensajeErrorContacto is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeErrorContacto</div>
+    }
+    @if (_mensajeExitoContacto is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExitoContacto</div>
+    }
+
+    <h2 class="h4">Contacto</h2>
+    <EditForm Model="_modeloContacto" OnValidSubmit="GuardarDatosDeContactoAsync">
+        <div class="row" style="max-width: 700px;">
+            <div class="col mb-3">
+                <label for="telefono" class="form-label">Teléfono</label>
+                <InputText id="telefono" class="form-control" @bind-Value="_modeloContacto.Telefono" />
+            </div>
+            <div class="col mb-3">
+                <label for="email" class="form-label">Correo electrónico</label>
+                <InputText id="email" type="email" class="form-control" @bind-Value="_modeloContacto.Email" />
+            </div>
+        </div>
+
+        <div class="mb-3" style="max-width: 700px;">
+            <label for="direccion" class="form-label">Dirección</label>
+            <InputText id="direccion" class="form-control" @bind-Value="_modeloContacto.Direccion" />
+        </div>
+
+        <div class="row" style="max-width: 700px;">
+            <div class="col mb-3">
+                <label for="contactoNombre" class="form-label">Contacto de emergencia — nombre</label>
+                <InputText id="contactoNombre" class="form-control" @bind-Value="_modeloContacto.ContactoEmergenciaNombre" />
+            </div>
+            <div class="col mb-3">
+                <label for="contactoTelefono" class="form-label">Contacto de emergencia — teléfono</label>
+                <InputText id="contactoTelefono" class="form-control" @bind-Value="_modeloContacto.ContactoEmergenciaTelefono" />
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardandoContacto">Guardar contacto</button>
+    </EditForm>
+
+    <hr class="my-4" />
+    <a class="btn btn-link" href="pacientes">Volver al listado</a>
+}
+
+@code {
+    [Parameter]
+    public Guid PacienteId { get; set; }
+
+    private PacienteDto? _paciente;
+    private bool _noEncontrado;
+
+    private readonly ModeloDatosPersonales _modeloPersonales = new();
+    private string? _mensajeErrorPersonales;
+    private string? _mensajeExitoPersonales;
+    private bool _guardandoPersonales;
+
+    private readonly ModeloDatosDeContacto _modeloContacto = new();
+    private string? _mensajeErrorContacto;
+    private string? _mensajeExitoContacto;
+    private bool _guardandoContacto;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _paciente = await PacienteService.ObtenerAsync(PacienteId);
+        if (_paciente is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        _modeloPersonales.Nombres = _paciente.Nombres;
+        _modeloPersonales.Apellidos = _paciente.Apellidos;
+        _modeloPersonales.TipoDocumento = _paciente.TipoDocumento;
+        _modeloPersonales.NumeroDocumento = _paciente.NumeroDocumento;
+        _modeloPersonales.FechaNacimiento = _paciente.FechaNacimiento;
+        _modeloPersonales.Genero = _paciente.Genero;
+
+        _modeloContacto.Telefono = _paciente.Telefono;
+        _modeloContacto.Email = _paciente.Email;
+        _modeloContacto.Direccion = _paciente.Direccion;
+        _modeloContacto.ContactoEmergenciaNombre = _paciente.ContactoEmergenciaNombre;
+        _modeloContacto.ContactoEmergenciaTelefono = _paciente.ContactoEmergenciaTelefono;
+    }
+
+    private async Task GuardarDatosPersonalesAsync()
+    {
+        _guardandoPersonales = true;
+        _mensajeErrorPersonales = null;
+        _mensajeExitoPersonales = null;
+
+        var resultado = await PacienteService.ActualizarDatosPersonalesAsync(PacienteId, new ActualizarDatosPersonalesPacienteRequest(
+            _modeloPersonales.Nombres, _modeloPersonales.Apellidos, _modeloPersonales.TipoDocumento,
+            _modeloPersonales.NumeroDocumento, _modeloPersonales.FechaNacimiento, _modeloPersonales.Genero));
+
+        _guardandoPersonales = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorPersonales = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoPersonales = "Datos personales actualizados.";
+    }
+
+    private async Task GuardarDatosDeContactoAsync()
+    {
+        _guardandoContacto = true;
+        _mensajeErrorContacto = null;
+        _mensajeExitoContacto = null;
+
+        var resultado = await PacienteService.ActualizarDatosDeContactoAsync(PacienteId, new ActualizarDatosDeContactoPacienteRequest(
+            _modeloContacto.Telefono, _modeloContacto.Email, _modeloContacto.Direccion,
+            _modeloContacto.ContactoEmergenciaNombre, _modeloContacto.ContactoEmergenciaTelefono));
+
+        _guardandoContacto = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorContacto = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoContacto = "Contacto actualizado.";
+    }
+
+    private sealed class ModeloDatosPersonales
+    {
+        public string Nombres { get; set; } = string.Empty;
+        public string Apellidos { get; set; } = string.Empty;
+        public TipoDocumentoIdentidad? TipoDocumento { get; set; }
+        public string? NumeroDocumento { get; set; }
+        public DateOnly? FechaNacimiento { get; set; }
+        public Genero? Genero { get; set; }
+    }
+
+    private sealed class ModeloDatosDeContacto
+    {
+        public string? Telefono { get; set; }
+        public string? Email { get; set; }
+        public string? Direccion { get; set; }
+        public string? ContactoEmergenciaNombre { get; set; }
+        public string? ContactoEmergenciaTelefono { get; set; }
+    }
+}

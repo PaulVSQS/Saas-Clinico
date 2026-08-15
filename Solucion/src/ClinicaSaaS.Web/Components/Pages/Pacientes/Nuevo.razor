@@ -1,0 +1,115 @@
+@page "/pacientes/nuevo"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Application.Common.Interfaces
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+@inject IClinicaService ClinicaService
+@inject ITenantContext TenantContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nuevo paciente</PageTitle>
+
+<h1>Nuevo paciente</h1>
+
+<p>
+    Solo el nombre hace falta para registrar al paciente — documento, fecha de nacimiento y
+    contacto se completan después, editando el paciente.
+</p>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+<EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+    @if (TenantContext.ClinicaId is null)
+    {
+        @if (_clinicas is null)
+        {
+            <p><em>Cargando...</em></p>
+        }
+        else
+        {
+            <div class="mb-3" style="max-width: 500px;">
+                <label for="clinica" class="form-label">Clínica</label>
+                <InputSelect id="clinica" class="form-select" @bind-Value="_modelo.ClinicaId">
+                    <option value="">-- Selecciona una clínica --</option>
+                    @foreach (var clinica in _clinicas)
+                    {
+                        <option value="@clinica.Id">@clinica.NombreComercial</option>
+                    }
+                </InputSelect>
+                <div class="form-text">
+                    Como SuperAdmin SaaS puedes elegir la clínica; un AdminClinica normal registra
+                    pacientes directo en su propia clínica, sin este selector.
+                </div>
+            </div>
+        }
+    }
+
+    <div class="mb-3" style="max-width: 400px;">
+        <label for="nombres" class="form-label">Nombres</label>
+        <InputText id="nombres" class="form-control" @bind-Value="_modelo.Nombres" />
+    </div>
+
+    <div class="mb-3" style="max-width: 400px;">
+        <label for="apellidos" class="form-label">Apellidos</label>
+        <InputText id="apellidos" class="form-control" @bind-Value="_modelo.Apellidos" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@_guardando">Registrar paciente</button>
+    <a class="btn btn-link" href="pacientes">Cancelar</a>
+</EditForm>
+
+@code {
+    private IReadOnlyList<ClinicaDto>? _clinicas;
+    private readonly ModeloNuevoPaciente _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TenantContext.ClinicaId is null)
+            _clinicas = await ClinicaService.ListarAsync();
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        Guid clinicaId;
+        if (TenantContext.ClinicaId is Guid clinicaActiva)
+        {
+            clinicaId = clinicaActiva;
+        }
+        else if (!Guid.TryParse(_modelo.ClinicaId, out clinicaId))
+        {
+            _mensajeError = "Selecciona una clínica.";
+            _guardando = false;
+            return;
+        }
+
+        var resultado = await PacienteService.RegistrarAsync(
+            new RegistrarPacienteRequest(clinicaId, _modelo.Nombres, _modelo.Apellidos));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo($"pacientes/{resultado.Value}/editar");
+    }
+
+    private sealed class ModeloNuevoPaciente
+    {
+        public string ClinicaId { get; set; } = string.Empty;
+        public string Nombres { get; set; } = string.Empty;
+        public string Apellidos { get; set; } = string.Empty;
+    }
+}
