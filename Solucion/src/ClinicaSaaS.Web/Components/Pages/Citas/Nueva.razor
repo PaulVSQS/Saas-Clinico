@@ -1,0 +1,225 @@
+@page "/citas/nueva"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Citas
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Application.Common.Interfaces
+@using ClinicaSaaS.Application.Consultorios
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IClinicaService ClinicaService
+@inject IDoctorService DoctorService
+@inject IPacienteService PacienteService
+@inject IConsultorioService ConsultorioService
+@inject ICitaService CitaService
+@inject ITenantContext TenantContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nueva cita</PageTitle>
+
+<h1>Nueva cita</h1>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+<EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+    @if (TenantContext.ClinicaId is null)
+    {
+        @if (_clinicas is null)
+        {
+            <p><em>Cargando...</em></p>
+        }
+        else
+        {
+            <div class="mb-3" style="max-width: 500px;">
+                <label for="clinica" class="form-label">Clínica</label>
+                <select id="clinica" class="form-select" value="@_modelo.ClinicaId" @onchange="OnClinicaCambiadaAsync">
+                    <option value="">-- Selecciona una clínica --</option>
+                    @foreach (var clinica in _clinicas)
+                    {
+                        <option value="@clinica.Id">@clinica.NombreComercial</option>
+                    }
+                </select>
+                <div class="form-text">
+                    Como SuperAdmin SaaS debes elegir la clínica primero para ver sus doctores,
+                    pacientes y consultorios; un AdminClinica normal no ve este selector.
+                </div>
+            </div>
+        }
+    }
+
+    <div class="mb-3" style="max-width: 500px;">
+        <label for="doctor" class="form-label">Doctor</label>
+        <InputSelect id="doctor" class="form-select" @bind-Value="_modelo.DoctorId">
+            <option value="">-- Selecciona un doctor --</option>
+            @foreach (var doctor in _doctores ?? [])
+            {
+                <option value="@doctor.Id">@doctor.NombreUsuario — @doctor.Especialidad</option>
+            }
+        </InputSelect>
+    </div>
+
+    <div class="mb-3" style="max-width: 500px;">
+        <label for="paciente" class="form-label">Paciente</label>
+        <InputSelect id="paciente" class="form-select" @bind-Value="_modelo.PacienteId">
+            <option value="">-- Selecciona un paciente --</option>
+            @foreach (var paciente in _pacientes ?? [])
+            {
+                <option value="@paciente.Id">@paciente.NombreCompleto</option>
+            }
+        </InputSelect>
+    </div>
+
+    <div class="mb-3" style="max-width: 500px;">
+        <label for="consultorio" class="form-label">Consultorio (opcional)</label>
+        <InputSelect id="consultorio" class="form-select" @bind-Value="_modelo.ConsultorioId">
+            <option value="">-- Por definir --</option>
+            @foreach (var consultorio in _consultorios ?? [])
+            {
+                <option value="@consultorio.Id">@consultorio.Nombre</option>
+            }
+        </InputSelect>
+    </div>
+
+    <div class="row" style="max-width: 700px;">
+        <div class="col mb-3">
+            <label for="fecha" class="form-label">Fecha</label>
+            <InputDate id="fecha" class="form-control" @bind-Value="_modelo.Fecha" />
+        </div>
+        <div class="col mb-3">
+            <label for="horaInicio" class="form-label">Hora de inicio</label>
+            <InputDate id="horaInicio" class="form-control" Type="InputDateType.Time" @bind-Value="_modelo.HoraInicio" />
+        </div>
+        <div class="col mb-3">
+            <label for="horaFin" class="form-label">Hora de fin</label>
+            <InputDate id="horaFin" class="form-control" Type="InputDateType.Time" @bind-Value="_modelo.HoraFin" />
+        </div>
+    </div>
+
+    <div class="mb-3" style="max-width: 700px;">
+        <label for="motivo" class="form-label">Motivo de consulta (opcional)</label>
+        <InputText id="motivo" class="form-control" @bind-Value="_modelo.MotivoConsulta" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@_guardando">Programar cita</button>
+    <a class="btn btn-link" href="citas">Cancelar</a>
+</EditForm>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? DoctorId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Fecha { get; set; }
+
+    private IReadOnlyList<ClinicaDto>? _clinicas;
+    private IReadOnlyList<DoctorDto>? _doctores;
+    private IReadOnlyList<PacienteDto>? _pacientes;
+    private IReadOnlyList<ConsultorioDto>? _consultorios;
+    private readonly ModeloNuevaCita _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DoctorId is Guid doctorId)
+            _modelo.DoctorId = doctorId.ToString();
+
+        if (Fecha is not null && DateOnly.TryParse(Fecha, out var fecha))
+            _modelo.Fecha = fecha;
+
+        if (TenantContext.ClinicaId is Guid clinicaActiva)
+        {
+            await CargarListasDeClinicaAsync(clinicaActiva);
+        }
+        else
+        {
+            _clinicas = await ClinicaService.ListarAsync();
+        }
+    }
+
+    private async Task OnClinicaCambiadaAsync(ChangeEventArgs e)
+    {
+        _modelo.ClinicaId = e.Value?.ToString() ?? string.Empty;
+
+        if (Guid.TryParse(_modelo.ClinicaId, out var clinicaId))
+            await CargarListasDeClinicaAsync(clinicaId);
+    }
+
+    private async Task CargarListasDeClinicaAsync(Guid clinicaId)
+    {
+        // Igual patrón que Horarios/Nuevo.razor (Módulo 6): con clínica activa en sesión, los
+        // servicios ya devuelven solo lo de esa clínica; sin ella (SuperAdmin), filtramos en
+        // memoria por la clínica elegida.
+        var todosLosDoctores = await DoctorService.ListarAsync();
+        var todosLosPacientes = await PacienteService.ListarAsync();
+        var todosLosConsultorios = await ConsultorioService.ListarAsync();
+
+        _doctores = todosLosDoctores.Where(d => d.ClinicaId == clinicaId && d.Activo).ToList();
+        _pacientes = todosLosPacientes.Where(p => p.ClinicaId == clinicaId).ToList();
+        _consultorios = todosLosConsultorios.Where(c => c.ClinicaId == clinicaId && c.Activo).ToList();
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        Guid clinicaId;
+        if (TenantContext.ClinicaId is Guid clinicaActiva)
+        {
+            clinicaId = clinicaActiva;
+        }
+        else if (!Guid.TryParse(_modelo.ClinicaId, out clinicaId))
+        {
+            _mensajeError = "Selecciona una clínica.";
+            _guardando = false;
+            return;
+        }
+
+        if (!Guid.TryParse(_modelo.DoctorId, out var doctorId))
+        {
+            _mensajeError = "Selecciona un doctor.";
+            _guardando = false;
+            return;
+        }
+
+        if (!Guid.TryParse(_modelo.PacienteId, out var pacienteId))
+        {
+            _mensajeError = "Selecciona un paciente.";
+            _guardando = false;
+            return;
+        }
+
+        Guid? consultorioId = Guid.TryParse(_modelo.ConsultorioId, out var idConsultorio) ? idConsultorio : null;
+
+        var resultado = await CitaService.ProgramarAsync(new ProgramarCitaRequest(
+            clinicaId, pacienteId, doctorId, consultorioId,
+            _modelo.Fecha.ToDateTime(_modelo.HoraInicio), _modelo.Fecha.ToDateTime(_modelo.HoraFin),
+            _modelo.MotivoConsulta));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo("citas");
+    }
+
+    private sealed class ModeloNuevaCita
+    {
+        public string ClinicaId { get; set; } = string.Empty;
+        public string DoctorId { get; set; } = string.Empty;
+        public string PacienteId { get; set; } = string.Empty;
+        public string ConsultorioId { get; set; } = string.Empty;
+        public DateOnly Fecha { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public TimeOnly HoraInicio { get; set; } = new(9, 0);
+        public TimeOnly HoraFin { get; set; } = new(9, 30);
+        public string? MotivoConsulta { get; set; }
+    }
+}

@@ -1,3 +1,4 @@
+using ClinicaSaaS.Application.Citas;
 using ClinicaSaaS.Application.Clinicas;
 using ClinicaSaaS.Application.Common.Interfaces;
 using ClinicaSaaS.Application.Consultorios;
@@ -14,7 +15,7 @@ namespace ClinicaSaaS.Application.DependencyInjection;
 /// <summary>
 /// Punto único de registro de los servicios de Application (Fase 5: IAutenticacionService;
 /// Fase 6: un servicio por módulo de negocio — Clínicas, Usuarios, Empleados, Doctores,
-/// Consultorios, Horarios, Pacientes, y los que sigan). Mismo patrón que
+/// Consultorios, Horarios, Pacientes, Citas, y los que sigan). Mismo patrón que
 /// AddInfrastructure()/AddPersistence() — Program.cs no debe conocer las clases concretas de
 /// este proyecto, solo llamar builder.Services.AddApplication().
 /// </summary>
@@ -37,6 +38,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IHorarioService, HorarioService>();
         // Módulo 7 de Fase 6: Pacientes
         services.AddScoped<IPacienteService, PacienteService>();
+        // Módulo 8 de Fase 6: Citas
+        services.AddScoped<ICitaService, CitaService>();
         return services;
     }
 }

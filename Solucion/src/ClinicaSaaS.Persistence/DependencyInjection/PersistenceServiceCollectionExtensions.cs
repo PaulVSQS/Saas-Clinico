@@ -1,7 +1,9 @@
 using ClinicaSaaS.Application.Common.Interfaces;
 using ClinicaSaaS.Domain.Personal;
+using ClinicaSaaS.Domain.Scheduling.Interfaces;
 using ClinicaSaaS.Persistence.Interceptors;
 using ClinicaSaaS.Persistence.Repositories;
+using ClinicaSaaS.Persistence.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,10 +16,9 @@ namespace ClinicaSaaS.Persistence.DependencyInjection;
 
 /// <summary>
 /// Punto único de registro de todo lo que ofrece Persistence: el DbContext (con sus 4
-/// interceptores de Fase 3), el repositorio genérico y el Unit of Work de Fase 4. Antes de
-/// esta clase, Program.cs armaba el DbContext "a mano" — se movió aquí para que Program.cs no
-/// tenga que conocer los interceptores ni el detalle de cómo se conecta a SQL Server, solo que
-/// existe una capa de Persistencia y hay que registrarla. Mismo patrón que
+/// interceptores de Fase 3), el repositorio genérico (con la especialización de Doctor, Fase 6
+/// Módulo 6), el Unit of Work de Fase 4, y los Domain Services cuya implementación requiere
+/// acceso a datos (ValidadorDisponibilidadDoctor, Fase 6 Módulo 8). Mismo patrón que
 /// InfrastructureServiceCollectionExtensions.AddInfrastructure() en el otro proyecto.
 /// </summary>
 public static class PersistenceServiceCollectionExtensions
@@ -49,9 +50,12 @@ public static class PersistenceServiceCollectionExtensions
         // colección hija que RepositorioBase no puede cargar de forma genérica. Se registra
         // DESPUÉS del genérico a propósito: en el contenedor de DI de .NET, cuando hay más de un
         // registro para el mismo tipo de servicio, gana el último — así IRepositorio<Doctor> usa
-        // RepositorioDoctor, y todos los demás agregados (Clínica, Usuario, Empleado,
-        // Consultorio) siguen resolviendo a RepositorioBase<T> sin cambios.
+        // RepositorioDoctor, y todos los demás agregados siguen resolviendo a RepositorioBase<T>.
         services.AddScoped<IRepositorio<Doctor>, RepositorioDoctor>();
+
+        // Módulo 8 de Fase 6: validar que un doctor no quede con dos citas simultáneas requiere
+        // consultar otras Citas — el Domain Service (Scheduling.Interfaces) se implementa aquí.
+        services.AddScoped<IValidadorDisponibilidadDoctor, ValidadorDisponibilidadDoctor>();
 
         return services;
     }

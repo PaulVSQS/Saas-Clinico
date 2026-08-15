@@ -1,0 +1,102 @@
+@page "/citas/{CitaId:guid}/reprogramar"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Citas
+@using ClinicaSaaS.Infrastructure.Identity
+@inject ICitaService CitaService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Reprogramar cita</PageTitle>
+
+@if (_cita is null && !_noEncontrada)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrada)
+{
+    <p role="alert">Esa cita no existe.</p>
+    <a class="btn btn-link" href="citas">Volver a la agenda</a>
+}
+else
+{
+    var cita = _cita!;
+
+    <h1>Reprogramar cita</h1>
+    <p>@cita.NombrePaciente — con @cita.NombreDoctor</p>
+    <p><em>Horario actual: @cita.FechaHoraInicio.ToString("dd/MM/yyyy HH:mm") - @cita.FechaHoraFin.ToString("HH:mm")</em></p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+
+    <EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+        <div class="row" style="max-width: 700px;">
+            <div class="col mb-3">
+                <label for="fecha" class="form-label">Nueva fecha</label>
+                <InputDate id="fecha" class="form-control" @bind-Value="_modelo.Fecha" />
+            </div>
+            <div class="col mb-3">
+                <label for="horaInicio" class="form-label">Nueva hora de inicio</label>
+                <InputDate id="horaInicio" class="form-control" Type="InputDateType.Time" @bind-Value="_modelo.HoraInicio" />
+            </div>
+            <div class="col mb-3">
+                <label for="horaFin" class="form-label">Nueva hora de fin</label>
+                <InputDate id="horaFin" class="form-control" Type="InputDateType.Time" @bind-Value="_modelo.HoraFin" />
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardando">Guardar nuevo horario</button>
+        <a class="btn btn-link" href="citas">Cancelar</a>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public Guid CitaId { get; set; }
+
+    private CitaDto? _cita;
+    private bool _noEncontrada;
+    private readonly ModeloReprogramar _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cita = await CitaService.ObtenerAsync(CitaId);
+        if (_cita is null)
+        {
+            _noEncontrada = true;
+            return;
+        }
+
+        _modelo.Fecha = DateOnly.FromDateTime(_cita.FechaHoraInicio);
+        _modelo.HoraInicio = TimeOnly.FromDateTime(_cita.FechaHoraInicio);
+        _modelo.HoraFin = TimeOnly.FromDateTime(_cita.FechaHoraFin);
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        var resultado = await CitaService.ReprogramarAsync(CitaId, new ReprogramarCitaRequest(
+            _modelo.Fecha.ToDateTime(_modelo.HoraInicio), _modelo.Fecha.ToDateTime(_modelo.HoraFin)));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo("citas");
+    }
+
+    private sealed class ModeloReprogramar
+    {
+        public DateOnly Fecha { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public TimeOnly HoraInicio { get; set; } = new(9, 0);
+        public TimeOnly HoraFin { get; set; } = new(9, 30);
+    }
+}

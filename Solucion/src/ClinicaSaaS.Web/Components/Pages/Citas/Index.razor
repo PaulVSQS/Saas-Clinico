@@ -1,0 +1,203 @@
+@page "/citas"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Citas
+@using ClinicaSaaS.Application.Doctores
+@using ClinicaSaaS.Domain.Scheduling.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IDoctorService DoctorService
+@inject ICitaService CitaService
+
+<PageTitle>Citas</PageTitle>
+
+<h1>Agenda de citas</h1>
+
+<p>
+    Selecciona un doctor y un día para ver su agenda — protegido con la Policy
+    <code>Rol:AdminClinica</code> (Fase 5), mismo criterio que los módulos anteriores.
+</p>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+<div class="row" style="max-width: 700px;">
+    <div class="col mb-3">
+        <label for="doctor" class="form-label">Doctor</label>
+        @if (_doctores is null)
+        {
+            <p><em>Cargando...</em></p>
+        }
+        else
+        {
+            <select id="doctor" class="form-select" @onchange="OnDoctorCambiadoAsync">
+                <option value="">-- Selecciona un doctor --</option>
+                @foreach (var doctor in _doctores)
+                {
+                    <option value="@doctor.Id" selected="@(doctor.Id == _doctorId)">@doctor.NombreUsuario — @doctor.Especialidad</option>
+                }
+            </select>
+        }
+    </div>
+    <div class="col mb-3">
+        <label for="fecha" class="form-label">Fecha</label>
+        <input type="date" id="fecha" class="form-control" value="@_fecha.ToString("yyyy-MM-dd")" @onchange="OnFechaCambiadaAsync" />
+    </div>
+</div>
+
+@if (_doctorId is Guid doctorId)
+{
+    <a class="btn btn-primary mb-3" href="@($"citas/nueva?doctorId={doctorId}&fecha={_fecha:yyyy-MM-dd}")">+ Nueva cita</a>
+
+    @if (_citas is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_citas.Count == 0)
+    {
+        <p>Este doctor no tiene citas agendadas ese día.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Paciente</th>
+                    <th>Consultorio</th>
+                    <th>Motivo</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var cita in _citas)
+                {
+                    <tr>
+                        <td>@cita.FechaHoraInicio.ToString("HH:mm") - @cita.FechaHoraFin.ToString("HH:mm")</td>
+                        <td>@cita.NombrePaciente</td>
+                        <td>@(cita.NombreConsultorio ?? "—")</td>
+                        <td>@(cita.MotivoConsulta ?? "—")</td>
+                        <td><span class="badge @ClaseEstado(cita.Estado)">@EtiquetaEstado(cita.Estado)</span></td>
+                        <td>
+                            @foreach (var accion in AccionesDisponibles(cita))
+                            {
+                                <button type="button" class="btn btn-link p-0 me-2 @(accion.EsPeligrosa ? "text-danger" : "")"
+                                        @onclick="() => EjecutarAccionAsync(cita.Id, accion.Ejecutar)">
+                                    @accion.Etiqueta
+                                </button>
+                            }
+                            @if (cita.Estado is EstadoCita.Programada or EstadoCita.Confirmada)
+                            {
+                                <a href="@($"citas/{cita.Id}/reprogramar")">Reprogramar</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private IReadOnlyList<DoctorDto>? _doctores;
+    private Guid? _doctorId;
+    private DateOnly _fecha = DateOnly.FromDateTime(DateTime.Today);
+    private IReadOnlyList<CitaDto>? _citas;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _doctores = await DoctorService.ListarAsync();
+    }
+
+    private async Task OnDoctorCambiadoAsync(ChangeEventArgs e)
+    {
+        _doctorId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        await CargarCitasAsync();
+    }
+
+    private async Task OnFechaCambiadaAsync(ChangeEventArgs e)
+    {
+        if (DateOnly.TryParse(e.Value?.ToString(), out var fecha))
+            _fecha = fecha;
+
+        await CargarCitasAsync();
+    }
+
+    private async Task CargarCitasAsync()
+    {
+        _mensajeError = null;
+        _citas = _doctorId is Guid doctorId
+            ? await CitaService.ListarPorDoctorYFechaAsync(doctorId, _fecha)
+            : null;
+    }
+
+    private async Task EjecutarAccionAsync(Guid citaId, Func<Guid, Task<ClinicaSaaS.SharedKernel.Results.Result>> ejecutar)
+    {
+        var resultado = await ejecutar(citaId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarCitasAsync();
+    }
+
+    private sealed record Accion(string Etiqueta, bool EsPeligrosa, Func<Guid, Task<ClinicaSaaS.SharedKernel.Results.Result>> Ejecutar);
+
+    /// <summary>
+    /// Espejo directo de Cita.TransicionesValidas (Domain) — ningún botón ofrece una transición
+    /// que el agregado vaya a rechazar. Reprogramar se muestra aparte (arriba) porque navega a
+    /// otra página en vez de ejecutar una acción en línea.
+    ///
+    /// Cada acción envuelve el método del servicio en una lambda explícita (id => CitaService.X(id))
+    /// en vez de pasar el grupo de métodos directo — evita un error de compilación (CS1503) que
+    /// aparece al combinar grupo de métodos + parámetro opcional (CancellationToken) dentro de
+    /// una expresión de colección con new() de tipo implícito.
+    /// </summary>
+    private IReadOnlyList<Accion> AccionesDisponibles(CitaDto cita) => cita.Estado switch
+    {
+        EstadoCita.Programada =>
+        [
+            new Accion("Confirmar", false, id => CitaService.ConfirmarAsync(id)),
+            new Accion("Cancelar", true, id => CitaService.CancelarAsync(id)),
+            new Accion("No asistió", true, id => CitaService.MarcarNoAsistioAsync(id))
+        ],
+        EstadoCita.Confirmada =>
+        [
+            new Accion("Iniciar atención", false, id => CitaService.IniciarAtencionAsync(id)),
+            new Accion("Cancelar", true, id => CitaService.CancelarAsync(id)),
+            new Accion("No asistió", true, id => CitaService.MarcarNoAsistioAsync(id))
+        ],
+        EstadoCita.EnProceso =>
+        [
+            new Accion("Completar", false, id => CitaService.CompletarAsync(id)),
+            new Accion("Cancelar", true, id => CitaService.CancelarAsync(id))
+        ],
+        EstadoCita.Cancelada or EstadoCita.NoAsistio =>
+        [
+            new Accion("Eliminar", true, id => CitaService.EliminarAsync(id))
+        ],
+        _ => []
+    };
+
+    private static string EtiquetaEstado(EstadoCita estado) => estado switch
+    {
+        EstadoCita.Programada => "Programada",
+        EstadoCita.Confirmada => "Confirmada",
+        EstadoCita.EnProceso => "En proceso",
+        EstadoCita.Completada => "Completada",
+        EstadoCita.Cancelada => "Cancelada",
+        EstadoCita.NoAsistio => "No asistió",
+        _ => estado.ToString()
+    };
+
+    private static string ClaseEstado(EstadoCita estado) => estado switch
+    {
+        EstadoCita.Programada => "bg-secondary",
+        EstadoCita.Confirmada => "bg-primary",
+        EstadoCita.EnProceso => "bg-warning text-dark",
+        EstadoCita.Completada => "bg-success",
+        EstadoCita.Cancelada => "bg-danger",
+        EstadoCita.NoAsistio => "bg-dark",
+        _ => "bg-secondary"
+    };
+}
