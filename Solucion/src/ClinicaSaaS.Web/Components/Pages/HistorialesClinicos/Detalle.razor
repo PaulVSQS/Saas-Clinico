@@ -5,11 +5,14 @@
 @using ClinicaSaaS.Application.Doctores
 @using ClinicaSaaS.Application.HistorialesClinicos
 @using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Domain.Clinical.Enums
 @using ClinicaSaaS.Infrastructure.Identity
+@using Microsoft.AspNetCore.Components.Forms
 @inject IPacienteService PacienteService
 @inject IDoctorService DoctorService
 @inject ICitaService CitaService
 @inject IHistorialClinicoService HistorialClinicoService
+@inject IArchivoClinicoService ArchivoClinicoService
 
 <PageTitle>Historial clínico</PageTitle>
 
@@ -181,10 +184,91 @@ else
         }
     }
 
+    <hr class="my-4" />
+
+    <h2 class="h4">Archivos clínicos</h2>
+
+    @if (_mensajeErrorArchivo is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeErrorArchivo</div>
+    }
+
+    @if (_entradas is not null && _entradas.Count == 0)
+    {
+        <p><em>Registra al menos una entrada de historial antes de adjuntar archivos.</em></p>
+    }
+    else
+    {
+        <div class="row align-items-end" style="max-width: 700px;">
+            <div class="col-4 mb-3">
+                <label for="tipoArchivo" class="form-label">Tipo de archivo</label>
+                <select id="tipoArchivo" class="form-select" @bind="_tipoArchivoSeleccionado">
+                    <option value="@TipoArchivoClinico.Radiografia">Radiografía</option>
+                    <option value="@TipoArchivoClinico.FotoIntraoral">Foto intraoral</option>
+                    <option value="@TipoArchivoClinico.Pdf">PDF</option>
+                    <option value="@TipoArchivoClinico.Laboratorio">Resultado de laboratorio</option>
+                </select>
+            </div>
+            <div class="col-8 mb-3">
+                <label for="archivo" class="form-label">Archivo (JPG, PNG o PDF — máximo 15 MB)</label>
+                <InputFile id="archivo" class="form-control" accept=".jpg,.jpeg,.png,.pdf" OnChange="SubirArchivoAsync" disabled="@_subiendo" />
+            </div>
+        </div>
+        @if (_subiendo)
+        {
+            <p><em>Subiendo archivo...</em></p>
+        }
+    }
+
+    @if (_archivos is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_archivos.Count == 0)
+    {
+        <p>Este paciente no tiene archivos clínicos adjuntos.</p>
+    }
+    else
+    {
+        <table class="table" style="max-width: 900px;">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>Tamaño</th>
+                    <th>Versión</th>
+                    <th>Subido por</th>
+                    <th>Fecha</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var archivo in _archivos)
+                {
+                    <tr>
+                        <td>@archivo.NombreOriginal</td>
+                        <td>@EtiquetaTipoArchivo(archivo.TipoArchivo)</td>
+                        <td>@FormatearTamano(archivo.TamanoBytes)</td>
+                        <td>@archivo.VersionEntrada</td>
+                        <td>@archivo.NombreSubidoPor</td>
+                        <td>@archivo.FechaSubida.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>
+                            <a href="@($"archivos-clinicos/{PacienteId}/{archivo.Id}")" target="_blank">Descargar</a>
+                            &nbsp;·&nbsp;
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => EliminarArchivoAsync(archivo.Id)">Eliminar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
     <a class="btn btn-link" href="historiales-clinicos">Volver al listado</a>
 }
 
 @code {
+    private const long TamanoMaximoBytes = 15 * 1024 * 1024; // 15 MB
+
     [Parameter]
     public Guid PacienteId { get; set; }
 
@@ -197,6 +281,11 @@ else
     private string? _mensajeError;
     private string? _mensajeExito;
     private bool _guardando;
+
+    private IReadOnlyList<ArchivoClinicoDto>? _archivos;
+    private TipoArchivoClinico _tipoArchivoSeleccionado = TipoArchivoClinico.Radiografia;
+    private string? _mensajeErrorArchivo;
+    private bool _subiendo;
 
     protected override async Task OnInitializedAsync()
     {
@@ -212,6 +301,7 @@ else
 
         _citas = await CitaService.ListarPorPacienteAsync(PacienteId);
         _entradas = await HistorialClinicoService.ListarEntradasPorPacienteAsync(PacienteId);
+        _archivos = await ArchivoClinicoService.ListarPorPacienteAsync(PacienteId);
     }
 
     private async Task GuardarEntradaAsync()
@@ -257,6 +347,45 @@ else
         _entradas = await HistorialClinicoService.ListarEntradasPorPacienteAsync(PacienteId);
     }
 
+    private async Task SubirArchivoAsync(InputFileChangeEventArgs e)
+    {
+        _mensajeErrorArchivo = null;
+
+        if (e.File.Size > TamanoMaximoBytes)
+        {
+            _mensajeErrorArchivo = "El archivo supera el tamaño máximo permitido (15 MB).";
+            return;
+        }
+
+        _subiendo = true;
+
+        try
+        {
+            await using var contenido = e.File.OpenReadStream(TamanoMaximoBytes);
+            var resultado = await ArchivoClinicoService.SubirArchivoAsync(
+                PacienteId, _tipoArchivoSeleccionado, e.File.Name, contenido);
+
+            if (resultado.EsFallido)
+            {
+                _mensajeErrorArchivo = resultado.Error.Descripcion;
+                return;
+            }
+
+            _archivos = await ArchivoClinicoService.ListarPorPacienteAsync(PacienteId);
+        }
+        finally
+        {
+            _subiendo = false;
+        }
+    }
+
+    private async Task EliminarArchivoAsync(Guid archivoId)
+    {
+        var resultado = await ArchivoClinicoService.EliminarAsync(PacienteId, archivoId);
+        _mensajeErrorArchivo = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        _archivos = await ArchivoClinicoService.ListarPorPacienteAsync(PacienteId);
+    }
+
     private static string EtiquetaSignosVitales(SignosVitalesDto sv)
     {
         var partes = new List<string>();
@@ -276,6 +405,26 @@ else
             partes.Add($"Talla {sv.TallaCm} cm");
 
         return partes.Count == 0 ? "—" : string.Join(" · ", partes);
+    }
+
+    private static string EtiquetaTipoArchivo(TipoArchivoClinico tipo) => tipo switch
+    {
+        TipoArchivoClinico.Radiografia => "Radiografía",
+        TipoArchivoClinico.FotoIntraoral => "Foto intraoral",
+        TipoArchivoClinico.Pdf => "PDF",
+        TipoArchivoClinico.Laboratorio => "Laboratorio",
+        _ => tipo.ToString()
+    };
+
+private static string FormatearTamano(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} B";
+
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024.0:0.#} KB";
+
+        return $"{bytes / (1024.0 * 1024.0):0.#} MB";
     }
 
     private sealed class ModeloNuevaEntrada

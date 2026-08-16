@@ -84,6 +84,24 @@ public sealed class HistorialClinico : EntityBase, ITenantEntity
         return entradaActual.AgregarArchivo(idArchivo, tipoArchivo, nombreOriginal, rutaAlmacenamiento, hash, tamanoBytes, subidoPorUsuarioId, fechaUtc);
     }
 
+    /// <summary>
+    /// Busca el archivo por Id en TODAS las entradas (no solo la actual — un archivo subido hace
+    /// tiempo, cuando esa entrada todavía era la vigente, sigue siendo corregible aunque hoy haya
+    /// una entrada más reciente). Módulo 10 de Fase 6: el dominio original (Fase 2) nunca previó
+    /// la necesidad operativa de corregir una subida equivocada.
+    /// </summary>
+    public Result EliminarArchivo(Guid archivoId, Guid usuarioId, DateTime fechaUtc)
+    {
+        foreach (var entrada in _entradas)
+        {
+            var resultado = entrada.EliminarArchivo(archivoId, usuarioId, fechaUtc);
+            if (!resultado.EsFallido)
+                return resultado;
+        }
+
+        return new Error("ArchivoClinico.NoEncontrado", "El archivo solicitado no existe en este historial.");
+    }
+
     public Result<ProcedimientoRealizado> RegistrarProcedimientoEnEntradaActual(
         Guid idProcedimiento, Guid procedimientoCatalogoId, Guid doctorId, string? piezaDental,
         Dinero precioAplicado, DateTime fechaUtc, string? notas)

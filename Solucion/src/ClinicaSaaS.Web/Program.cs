@@ -59,6 +59,10 @@ app.MapRazorComponents<App>()
 // Endpoints de login/logout (Fase 5) — ver AuthEndpoints.cs sobre por qué viven fuera de Blazor.
 app.MapAuthEndpoints();
 
+// Descarga de archivos clínicos (Fase 6, Módulo 10) — mismo motivo que los de arriba: Blazor
+// Server no puede empujar una descarga de archivo por el circuito SignalR.
+app.MapArchivosClinicosEndpoints();
+
 // SOLO DESARROLLO — crea un Usuario SuperAdmin de prueba si la base de datos todavía no tiene
 // ninguno. Ver DevDataSeeder.cs.
 if (app.Environment.IsDevelopment())

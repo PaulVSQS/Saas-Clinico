@@ -12,9 +12,9 @@ namespace ClinicaSaaS.Domain.Clinical.Entities;
 /// clínicos (MotivoConsulta, Diagnostico, Tratamiento, etc.) una vez creada. Un expediente
 /// alterado retroactivamente sin dejar rastro es inaceptable legal y médicamente; corregir un
 /// dato significa crear una nueva entrada enlazada a la anterior vía EntradaAnteriorId, nunca
-/// mutar la existente. Solo AgregarArchivo/AgregarProcedimientoRealizado (colecciones internas,
-/// aditivas) y MarcarComoNoVersionActual (housekeeping interno del agregado) son mutaciones
-/// permitidas.
+/// mutar la existente. Solo AgregarArchivo/EliminarArchivo/AgregarProcedimientoRealizado
+/// (colecciones internas, aditivas o de baja lógica) y MarcarComoNoVersionActual (housekeeping
+/// interno del agregado) son mutaciones permitidas.
 /// </summary>
 public sealed class HistorialClinicoEntrada : EntityBase
 {
@@ -69,6 +69,23 @@ public sealed class HistorialClinicoEntrada : EntityBase
             idArchivo, tipoArchivo, nombreOriginal, rutaAlmacenamiento, hash, tamanoBytes, subidoPorUsuarioId, fechaUtc);
         _archivos.Add(archivo);
         return archivo;
+    }
+
+    /// <summary>
+    /// Baja lógica de un archivo de ESTA entrada (soft-delete de dominio, ver ArchivoClinico.
+    /// Eliminar) — nunca borra el binario físico, eso es responsabilidad exclusiva de
+    /// Application vía IFileStorageService y solo como compensación de errores, nunca como parte
+    /// de un borrado normal. Módulo 10 de Fase 6, agregado porque el dominio original (Fase 2)
+    /// nunca previó la necesidad operativa de corregir una subida equivocada.
+    /// </summary>
+    internal Result EliminarArchivo(Guid archivoId, Guid usuarioId, DateTime fechaUtc)
+    {
+        var archivo = _archivos.SingleOrDefault(a => a.Id == archivoId);
+        if (archivo is null)
+            return new Error("ArchivoClinico.NoEncontrado", "El archivo no pertenece a esta entrada del historial.");
+
+        archivo.Eliminar(usuarioId, fechaUtc);
+        return Result.Exitoso();
     }
 
     internal ProcedimientoRealizado RegistrarProcedimientoRealizado(
