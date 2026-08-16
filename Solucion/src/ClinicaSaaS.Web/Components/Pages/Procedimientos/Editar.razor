@@ -1,0 +1,167 @@
+@page "/procedimientos/{ProcedimientoCatalogoId:guid}/editar"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Procedimientos
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IProcedimientoCatalogoService ProcedimientoCatalogoService
+
+<PageTitle>Editar procedimiento</PageTitle>
+
+@if (_procedimiento is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese procedimiento no existe.</p>
+    <a class="btn btn-link" href="procedimientos">Volver al listado</a>
+}
+else
+{
+    var procedimiento = _procedimiento!;
+
+    <h1>Editar procedimiento @procedimiento.Nombre</h1>
+    <p><strong>Clínica:</strong> @procedimiento.NombreClinica</p>
+
+    @if (_mensajeErrorDatos is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeErrorDatos</div>
+    }
+    @if (_mensajeExitoDatos is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExitoDatos</div>
+    }
+
+    <h2 class="h4">Datos</h2>
+    <EditForm Model="_modeloDatos" OnValidSubmit="GuardarDatosAsync">
+        <div class="row" style="max-width: 700px;">
+            <div class="col-4 mb-3">
+                <label for="codigo" class="form-label">Código</label>
+                <InputText id="codigo" class="form-control" @bind-Value="_modeloDatos.Codigo" />
+            </div>
+            <div class="col-8 mb-3">
+                <label for="nombre" class="form-label">Nombre</label>
+                <InputText id="nombre" class="form-control" @bind-Value="_modeloDatos.Nombre" />
+            </div>
+        </div>
+
+        <div class="mb-3" style="max-width: 700px;">
+            <label for="descripcion" class="form-label">Descripción (opcional)</label>
+            <InputTextArea id="descripcion" class="form-control" rows="2" @bind-Value="_modeloDatos.Descripcion" />
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardandoDatos">Guardar datos</button>
+    </EditForm>
+
+    <hr class="my-4" />
+
+    @if (_mensajeErrorPrecio is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeErrorPrecio</div>
+    }
+    @if (_mensajeExitoPrecio is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExitoPrecio</div>
+    }
+
+    <h2 class="h4">Precio</h2>
+    <p><em>Precio base actual: RD$ @procedimiento.PrecioBase.ToString("N2")</em></p>
+    <EditForm Model="_modeloPrecio" OnValidSubmit="GuardarPrecioAsync">
+        <div class="mb-3" style="max-width: 300px;">
+            <label for="nuevoPrecio" class="form-label">Nuevo precio base (RD$)</label>
+            <InputNumber id="nuevoPrecio" class="form-control" @bind-Value="_modeloPrecio.NuevoPrecio" />
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardandoPrecio">Cambiar precio</button>
+    </EditForm>
+
+    <hr class="my-4" />
+    <a class="btn btn-link" href="procedimientos">Volver al listado</a>
+}
+
+@code {
+    [Parameter]
+    public Guid ProcedimientoCatalogoId { get; set; }
+
+    private ProcedimientoCatalogoDto? _procedimiento;
+    private bool _noEncontrado;
+
+    private readonly ModeloDatos _modeloDatos = new();
+    private string? _mensajeErrorDatos;
+    private string? _mensajeExitoDatos;
+    private bool _guardandoDatos;
+
+    private readonly ModeloPrecio _modeloPrecio = new();
+    private string? _mensajeErrorPrecio;
+    private string? _mensajeExitoPrecio;
+    private bool _guardandoPrecio;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _procedimiento = await ProcedimientoCatalogoService.ObtenerAsync(ProcedimientoCatalogoId);
+        if (_procedimiento is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        _modeloDatos.Codigo = _procedimiento.Codigo;
+        _modeloDatos.Nombre = _procedimiento.Nombre;
+        _modeloDatos.Descripcion = _procedimiento.Descripcion;
+        _modeloPrecio.NuevoPrecio = _procedimiento.PrecioBase;
+    }
+
+    private async Task GuardarDatosAsync()
+    {
+        _guardandoDatos = true;
+        _mensajeErrorDatos = null;
+        _mensajeExitoDatos = null;
+
+        var resultado = await ProcedimientoCatalogoService.ActualizarDatosAsync(
+            ProcedimientoCatalogoId, new ActualizarDatosProcedimientoCatalogoRequest(_modeloDatos.Codigo, _modeloDatos.Nombre, _modeloDatos.Descripcion));
+
+        _guardandoDatos = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorDatos = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoDatos = "Datos actualizados.";
+        _procedimiento = await ProcedimientoCatalogoService.ObtenerAsync(ProcedimientoCatalogoId);
+    }
+
+    private async Task GuardarPrecioAsync()
+    {
+        _guardandoPrecio = true;
+        _mensajeErrorPrecio = null;
+        _mensajeExitoPrecio = null;
+
+        var resultado = await ProcedimientoCatalogoService.CambiarPrecioAsync(
+            ProcedimientoCatalogoId, new CambiarPrecioProcedimientoCatalogoRequest(_modeloPrecio.NuevoPrecio));
+
+        _guardandoPrecio = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorPrecio = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoPrecio = "Precio actualizado.";
+        _procedimiento = await ProcedimientoCatalogoService.ObtenerAsync(ProcedimientoCatalogoId);
+    }
+
+    private sealed class ModeloDatos
+    {
+        public string Codigo { get; set; } = string.Empty;
+        public string Nombre { get; set; } = string.Empty;
+        public string? Descripcion { get; set; }
+    }
+
+    private sealed class ModeloPrecio
+    {
+        public decimal NuevoPrecio { get; set; }
+    }
+}

@@ -1,0 +1,106 @@
+@page "/procedimientos"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Procedimientos
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IProcedimientoCatalogoService ProcedimientoCatalogoService
+
+<PageTitle>Procedimientos</PageTitle>
+
+<h1>Catálogo de procedimientos</h1>
+
+<p>
+    Qué procedimientos ofrece la clínica y a qué precio base — protegido con la Policy
+    <code>Rol:AdminClinica</code> (Fase 5), mismo criterio que los módulos anteriores. Registrar
+    que un procedimiento se ejecutó de verdad en un paciente se hace desde su historial clínico.
+</p>
+
+<a class="btn btn-primary mb-3" href="procedimientos/nuevo">+ Nuevo procedimiento</a>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_procedimientos is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_procedimientos.Count == 0)
+{
+    <p>No hay procedimientos registrados todavía.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Precio base</th>
+                <th>Clínica</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var procedimiento in _procedimientos)
+            {
+                <tr>
+                    <td>@procedimiento.Codigo</td>
+                    <td>@procedimiento.Nombre</td>
+                    <td>RD$ @procedimiento.PrecioBase.ToString("N2")</td>
+                    <td>@procedimiento.NombreClinica</td>
+                    <td>
+                        @if (procedimiento.Activo)
+                        {
+                            <span class="badge bg-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactivo</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="@($"procedimientos/{procedimiento.Id}/editar")">Editar</a>
+                        &nbsp;·&nbsp;
+                        @if (procedimiento.Activo)
+                        {
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(procedimiento.Id)">Desactivar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(procedimiento.Id)">Reactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<ProcedimientoCatalogoDto>? _procedimientos;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _procedimientos = await ProcedimientoCatalogoService.ListarAsync();
+    }
+
+    private async Task DesactivarAsync(Guid id)
+    {
+        var resultado = await ProcedimientoCatalogoService.DesactivarAsync(id);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task ReactivarAsync(Guid id)
+    {
+        var resultado = await ProcedimientoCatalogoService.ReactivarAsync(id);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}

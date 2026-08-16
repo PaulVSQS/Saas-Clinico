@@ -1,0 +1,123 @@
+@page "/procedimientos/nuevo"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Application.Common.Interfaces
+@using ClinicaSaaS.Application.Procedimientos
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IProcedimientoCatalogoService ProcedimientoCatalogoService
+@inject IClinicaService ClinicaService
+@inject ITenantContext TenantContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nuevo procedimiento</PageTitle>
+
+<h1>Nuevo procedimiento</h1>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+<EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+    @if (TenantContext.ClinicaId is null)
+    {
+        @if (_clinicas is null)
+        {
+            <p><em>Cargando...</em></p>
+        }
+        else
+        {
+            <div class="mb-3" style="max-width: 500px;">
+                <label for="clinica" class="form-label">Clínica</label>
+                <InputSelect id="clinica" class="form-select" @bind-Value="_modelo.ClinicaId">
+                    <option value="">-- Selecciona una clínica --</option>
+                    @foreach (var clinica in _clinicas)
+                    {
+                        <option value="@clinica.Id">@clinica.NombreComercial</option>
+                    }
+                </InputSelect>
+                <div class="form-text">
+                    Como SuperAdmin SaaS puedes elegir la clínica; un AdminClinica normal registra
+                    procedimientos directo en su propia clínica, sin este selector.
+                </div>
+            </div>
+        }
+    }
+
+    <div class="row" style="max-width: 700px;">
+        <div class="col-4 mb-3">
+            <label for="codigo" class="form-label">Código</label>
+            <InputText id="codigo" class="form-control" @bind-Value="_modelo.Codigo" placeholder="Ej. PROC-001" />
+        </div>
+        <div class="col-8 mb-3">
+            <label for="nombre" class="form-label">Nombre</label>
+            <InputText id="nombre" class="form-control" @bind-Value="_modelo.Nombre" placeholder="Ej. Limpieza dental" />
+        </div>
+    </div>
+
+    <div class="mb-3" style="max-width: 700px;">
+        <label for="descripcion" class="form-label">Descripción (opcional)</label>
+        <InputTextArea id="descripcion" class="form-control" rows="2" @bind-Value="_modelo.Descripcion" />
+    </div>
+
+    <div class="mb-3" style="max-width: 300px;">
+        <label for="precioBase" class="form-label">Precio base (RD$)</label>
+        <InputNumber id="precioBase" class="form-control" @bind-Value="_modelo.PrecioBase" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@_guardando">Registrar procedimiento</button>
+    <a class="btn btn-link" href="procedimientos">Cancelar</a>
+</EditForm>
+
+@code {
+    private IReadOnlyList<ClinicaDto>? _clinicas;
+    private readonly ModeloNuevoProcedimiento _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TenantContext.ClinicaId is null)
+            _clinicas = await ClinicaService.ListarAsync();
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        Guid clinicaId;
+        if (TenantContext.ClinicaId is Guid clinicaActiva)
+        {
+            clinicaId = clinicaActiva;
+        }
+        else if (!Guid.TryParse(_modelo.ClinicaId, out clinicaId))
+        {
+            _mensajeError = "Selecciona una clínica.";
+            _guardando = false;
+            return;
+        }
+
+        var resultado = await ProcedimientoCatalogoService.RegistrarAsync(new RegistrarProcedimientoCatalogoRequest(
+            clinicaId, _modelo.Codigo, _modelo.Nombre, _modelo.Descripcion, _modelo.PrecioBase));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo("procedimientos");
+    }
+
+    private sealed class ModeloNuevoProcedimiento
+    {
+        public string ClinicaId { get; set; } = string.Empty;
+        public string Codigo { get; set; } = string.Empty;
+        public string Nombre { get; set; } = string.Empty;
+        public string? Descripcion { get; set; }
+        public decimal PrecioBase { get; set; }
+    }
+}

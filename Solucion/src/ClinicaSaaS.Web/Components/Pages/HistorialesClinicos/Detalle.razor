@@ -5,6 +5,7 @@
 @using ClinicaSaaS.Application.Doctores
 @using ClinicaSaaS.Application.HistorialesClinicos
 @using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Application.Procedimientos
 @using ClinicaSaaS.Domain.Clinical.Enums
 @using ClinicaSaaS.Infrastructure.Identity
 @using Microsoft.AspNetCore.Components.Forms
@@ -13,6 +14,8 @@
 @inject ICitaService CitaService
 @inject IHistorialClinicoService HistorialClinicoService
 @inject IArchivoClinicoService ArchivoClinicoService
+@inject IProcedimientoCatalogoService ProcedimientoCatalogoService
+@inject IProcedimientoRealizadoService ProcedimientoRealizadoService
 
 <PageTitle>Historial clínico</PageTitle>
 
@@ -263,6 +266,112 @@ else
         </table>
     }
 
+    <hr class="my-4" />
+
+    <h2 class="h4">Procedimientos realizados</h2>
+
+    @if (_mensajeErrorProcedimiento is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeErrorProcedimiento</div>
+    }
+    @if (_mensajeExitoProcedimiento is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExitoProcedimiento</div>
+    }
+
+    @if (_entradas is not null && _entradas.Count == 0)
+    {
+        <p><em>Registra al menos una entrada de historial antes de registrar procedimientos.</em></p>
+    }
+    else if (_catalogoActivo is not null && _catalogoActivo.Count == 0)
+    {
+        <p><em>La clínica no tiene procedimientos activos en su catálogo — <a href="procedimientos">agrega uno primero</a>.</em></p>
+    }
+    else
+    {
+        <EditForm Model="_modeloProcedimiento" OnValidSubmit="RegistrarProcedimientoAsync">
+            <div class="row" style="max-width: 800px;">
+                <div class="col-4 mb-3">
+                    <label for="procedimientoDoctor" class="form-label">Doctor</label>
+                    <InputSelect id="procedimientoDoctor" class="form-select" @bind-Value="_modeloProcedimiento.DoctorId">
+                        <option value="">-- Selecciona --</option>
+                        @foreach (var doctor in _doctores ?? [])
+                        {
+                            <option value="@doctor.Id">@doctor.NombreUsuario</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-4 mb-3">
+                    <label for="procedimientoCatalogo" class="form-label">Procedimiento</label>
+                    <InputSelect id="procedimientoCatalogo" class="form-select" @bind-Value="_modeloProcedimiento.ProcedimientoCatalogoId">
+                        <option value="">-- Selecciona --</option>
+                        @foreach (var procedimiento in _catalogoActivo ?? [])
+                        {
+                            <option value="@procedimiento.Id">@procedimiento.Codigo — @procedimiento.Nombre (RD$ @procedimiento.PrecioBase.ToString("N2"))</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-4 mb-3">
+                    <label for="piezaDental" class="form-label">Pieza dental (opcional)</label>
+                    <InputText id="piezaDental" class="form-control" @bind-Value="_modeloProcedimiento.PiezaDental" placeholder="Ej. 16 (notación FDI)" />
+                </div>
+            </div>
+
+            <div class="row" style="max-width: 800px;">
+                <div class="col-4 mb-3">
+                    <label for="precioAplicado" class="form-label">Precio aplicado (opcional)</label>
+                    <InputNumber id="precioAplicado" class="form-control" @bind-Value="_modeloProcedimiento.PrecioAplicado" />
+                    <div class="form-text">Vacío = toma el precio actual del catálogo.</div>
+                </div>
+                <div class="col-8 mb-3">
+                    <label for="notasProcedimiento" class="form-label">Notas (opcional)</label>
+                    <InputText id="notasProcedimiento" class="form-control" @bind-Value="_modeloProcedimiento.Notas" />
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@_guardandoProcedimiento">Registrar procedimiento</button>
+        </EditForm>
+    }
+
+    @if (_procedimientosRealizados is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_procedimientosRealizados.Count == 0)
+    {
+        <p>Este paciente no tiene procedimientos registrados.</p>
+    }
+    else
+    {
+        <table class="table" style="max-width: 900px;">
+            <thead>
+                <tr>
+                    <th>Procedimiento</th>
+                    <th>Doctor</th>
+                    <th>Pieza</th>
+                    <th>Precio aplicado</th>
+                    <th>Versión</th>
+                    <th>Fecha</th>
+                    <th>Notas</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var procedimiento in _procedimientosRealizados)
+                {
+                    <tr>
+                        <td>@procedimiento.CodigoProcedimiento — @procedimiento.NombreProcedimiento</td>
+                        <td>@procedimiento.NombreDoctor</td>
+                        <td>@(procedimiento.PiezaDental ?? "—")</td>
+                        <td>RD$ @procedimiento.PrecioAplicado.ToString("N2")</td>
+                        <td>@procedimiento.VersionEntrada</td>
+                        <td>@procedimiento.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@(procedimiento.Notas ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
     <a class="btn btn-link" href="historiales-clinicos">Volver al listado</a>
 }
 
@@ -287,6 +396,13 @@ else
     private string? _mensajeErrorArchivo;
     private bool _subiendo;
 
+    private IReadOnlyList<ProcedimientoCatalogoDto>? _catalogoActivo;
+    private IReadOnlyList<ProcedimientoRealizadoDto>? _procedimientosRealizados;
+    private readonly ModeloNuevoProcedimiento _modeloProcedimiento = new();
+    private string? _mensajeErrorProcedimiento;
+    private string? _mensajeExitoProcedimiento;
+    private bool _guardandoProcedimiento;
+
     protected override async Task OnInitializedAsync()
     {
         _paciente = await PacienteService.ObtenerAsync(PacienteId);
@@ -299,9 +415,13 @@ else
         var todosLosDoctores = await DoctorService.ListarAsync();
         _doctores = todosLosDoctores.Where(d => d.ClinicaId == _paciente.ClinicaId && d.Activo).ToList();
 
+        var todoElCatalogo = await ProcedimientoCatalogoService.ListarAsync();
+        _catalogoActivo = todoElCatalogo.Where(p => p.ClinicaId == _paciente.ClinicaId && p.Activo).ToList();
+
         _citas = await CitaService.ListarPorPacienteAsync(PacienteId);
         _entradas = await HistorialClinicoService.ListarEntradasPorPacienteAsync(PacienteId);
         _archivos = await ArchivoClinicoService.ListarPorPacienteAsync(PacienteId);
+        _procedimientosRealizados = await ProcedimientoRealizadoService.ListarPorPacienteAsync(PacienteId);
     }
 
     private async Task GuardarEntradaAsync()
@@ -386,6 +506,43 @@ else
         _archivos = await ArchivoClinicoService.ListarPorPacienteAsync(PacienteId);
     }
 
+    private async Task RegistrarProcedimientoAsync()
+    {
+        _guardandoProcedimiento = true;
+        _mensajeErrorProcedimiento = null;
+        _mensajeExitoProcedimiento = null;
+
+        if (!Guid.TryParse(_modeloProcedimiento.DoctorId, out var doctorId))
+        {
+            _mensajeErrorProcedimiento = "Selecciona un doctor.";
+            _guardandoProcedimiento = false;
+            return;
+        }
+
+        if (!Guid.TryParse(_modeloProcedimiento.ProcedimientoCatalogoId, out var procedimientoCatalogoId))
+        {
+            _mensajeErrorProcedimiento = "Selecciona un procedimiento.";
+            _guardandoProcedimiento = false;
+            return;
+        }
+
+        var resultado = await ProcedimientoRealizadoService.RegistrarAsync(new RegistrarProcedimientoRealizadoRequest(
+            PacienteId, procedimientoCatalogoId, doctorId, _modeloProcedimiento.PiezaDental,
+            _modeloProcedimiento.PrecioAplicado, _modeloProcedimiento.Notas));
+
+        _guardandoProcedimiento = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorProcedimiento = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoProcedimiento = "Procedimiento registrado.";
+        _modeloProcedimiento.Reiniciar();
+        _procedimientosRealizados = await ProcedimientoRealizadoService.ListarPorPacienteAsync(PacienteId);
+    }
+
     private static string EtiquetaSignosVitales(SignosVitalesDto sv)
     {
         var partes = new List<string>();
@@ -416,7 +573,7 @@ else
         _ => tipo.ToString()
     };
 
-private static string FormatearTamano(long bytes)
+    private static string FormatearTamano(long bytes)
     {
         if (bytes < 1024)
             return $"{bytes} B";
@@ -460,6 +617,24 @@ private static string FormatearTamano(long bytes)
             TallaCm = null;
             // DoctorId y CitaId se dejan como estaban — es común encadenar varias entradas
             // seguidas para el mismo doctor/cita.
+        }
+    }
+
+    private sealed class ModeloNuevoProcedimiento
+    {
+        public string DoctorId { get; set; } = string.Empty;
+        public string ProcedimientoCatalogoId { get; set; } = string.Empty;
+        public string? PiezaDental { get; set; }
+        public decimal? PrecioAplicado { get; set; }
+        public string? Notas { get; set; }
+
+        public void Reiniciar()
+        {
+            PiezaDental = null;
+            PrecioAplicado = null;
+            Notas = null;
+            // DoctorId y ProcedimientoCatalogoId se dejan como estaban — es común registrar
+            // varios procedimientos seguidos para el mismo doctor/tipo.
         }
     }
 }

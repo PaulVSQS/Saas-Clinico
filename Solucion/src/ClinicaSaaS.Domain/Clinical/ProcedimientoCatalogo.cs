@@ -47,6 +47,27 @@ public sealed class ProcedimientoCatalogo : SoftDeleteEntity, ITenantEntity
         return new ProcedimientoCatalogo(id, clinicaId, codigo.Trim(), nombre.Trim(), precioBase) { Descripcion = descripcion?.Trim() };
     }
 
+    /// <summary>
+    /// Corrige código/nombre/descripción — separado de CambiarPrecio a propósito: repreciar es
+    /// una decisión de negocio distinta a corregir un typo, y CambiarPrecio ya tenía su propia
+    /// guarda (no repreciar un procedimiento inactivo) que no debe aplicar aquí. Módulo 11 de
+    /// Fase 6, agregado porque el dominio original (Fase 2) nunca previó la necesidad operativa
+    /// de corregir estos datos después del alta.
+    /// </summary>
+    public Result ActualizarDatos(string codigo, string nombre, string? descripcion)
+    {
+        if (string.IsNullOrWhiteSpace(codigo))
+            return new Error("ProcedimientoCatalogo.CodigoRequerido", "El código es requerido.");
+
+        if (string.IsNullOrWhiteSpace(nombre))
+            return new Error("ProcedimientoCatalogo.NombreRequerido", "El nombre es requerido.");
+
+        Codigo = codigo.Trim();
+        Nombre = nombre.Trim();
+        Descripcion = descripcion?.Trim();
+        return Result.Exitoso();
+    }
+
     public Result CambiarPrecio(Dinero nuevoPrecio)
     {
         if (!Activo)
