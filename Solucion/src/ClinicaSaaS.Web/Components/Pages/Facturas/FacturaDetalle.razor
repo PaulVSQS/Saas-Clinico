@@ -1,0 +1,524 @@
+@page "/facturas/{PacienteId:guid}/{FacturaId:guid}"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Facturacion
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Application.Procedimientos
+@using ClinicaSaaS.Domain.Billing.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+@inject IFacturaService FacturaService
+@inject IProcedimientoRealizadoService ProcedimientoRealizadoService
+@inject ISecuenciaComprobanteService SecuenciaComprobanteService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Factura</PageTitle>
+
+@if (_factura is null && !_noEncontrada)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrada)
+{
+    <p role="alert">Esa factura no existe.</p>
+    <a class="btn btn-link" href="@($"facturas/{PacienteId}")">Volver al listado</a>
+}
+else
+{
+    var factura = _factura!;
+
+    <h1>Factura de @factura.NombrePaciente</h1>
+    <p>
+        @(factura.TipoFactura == TipoFactura.Fiscal ? "Fiscal" : "Interna")
+        — @(factura.NumeroComprobante ?? "Sin comprobante asignado")
+        — <span class="badge @ClaseEstado(factura.Estado)">@EtiquetaEstado(factura.Estado)</span>
+        @if (factura.TipoFactura == TipoFactura.Fiscal && factura.EstadoDGII is { } estadoDgii)
+        {
+            <span> · DGII: @EtiquetaEstadoDGII(estadoDgii)</span>
+        }
+    </p>
+    <p><em>Emitida el @factura.FechaEmision.ToString("dd/MM/yyyy HH:mm")</em></p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+    @if (_mensajeExito is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExito</div>
+    }
+
+    <table class="table" style="max-width: 500px;">
+        <tbody>
+            <tr><th>Subtotal</th><td>RD$ @factura.Subtotal.ToString("N2")</td></tr>
+            <tr><th>Descuento</th><td>RD$ @factura.Descuento.ToString("N2")</td></tr>
+            <tr><th>Impuestos</th><td>RD$ @factura.Impuestos.ToString("N2")</td></tr>
+            <tr><th>Total</th><td><strong>RD$ @factura.Total.ToString("N2")</strong></td></tr>
+            <tr><th>Pagado</th><td>RD$ @factura.TotalPagado.ToString("N2")</td></tr>
+            <tr><th>Saldo pendiente</th><td>RD$ @factura.SaldoPendiente.ToString("N2")</td></tr>
+        </tbody>
+    </table>
+
+    <h2 class="h4">Detalles</h2>
+
+    @if (factura.Detalles.Count == 0)
+    {
+        <p>Esta factura no tiene detalles todavía.</p>
+    }
+    else
+    {
+        <table class="table" style="max-width: 800px;">
+            <thead>
+                <tr>
+                    <th>Descripción</th>
+                    <th>Cantidad</th>
+                    <th>Precio unitario</th>
+                    <th>Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var detalle in factura.Detalles)
+                {
+                    <tr>
+                        <td>@detalle.Descripcion</td>
+                        <td>@detalle.Cantidad</td>
+                        <td>RD$ @detalle.PrecioUnitario.ToString("N2")</td>
+                        <td>RD$ @detalle.Subtotal.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (!factura.EstaAnulada)
+    {
+        <h3 class="h5">Agregar detalle</h3>
+        <EditForm Model="_modeloDetalle" OnValidSubmit="AgregarDetalleAsync">
+            <div class="mb-3" style="max-width: 500px;">
+                <label for="origenDetalle" class="form-label">Origen</label>
+                <select id="origenDetalle" class="form-select" @bind="_modeloDetalle.OrigenEsProcedimiento">
+                    <option value="true">Desde un procedimiento realizado</option>
+                    <option value="false">Cargo manual</option>
+                </select>
+            </div>
+
+            @if (_modeloDetalle.OrigenEsProcedimiento)
+            {
+                <div class="mb-3" style="max-width: 600px;">
+                    <label for="procedimiento" class="form-label">Procedimiento realizado</label>
+                    <InputSelect id="procedimiento" class="form-select" @bind-Value="_modeloDetalle.ProcedimientoRealizadoId">
+                        <option value="">-- Selecciona --</option>
+                        @foreach (var procedimiento in _procedimientosDisponibles ?? [])
+                        {
+                            <option value="@procedimiento.Id">
+                                @procedimiento.CodigoProcedimiento — @procedimiento.NombreProcedimiento
+                                (RD$ @procedimiento.PrecioAplicado.ToString("N2")) — @procedimiento.Fecha.ToString("dd/MM/yyyy")
+                            </option>
+                        }
+                    </InputSelect>
+                    @if (_procedimientosDisponibles is not null && _procedimientosDisponibles.Count == 0)
+                    {
+                        <div class="form-text">No hay procedimientos de este paciente pendientes de facturar.</div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="row" style="max-width: 700px;">
+                    <div class="col-8 mb-3">
+                        <label for="descripcionManual" class="form-label">Descripción</label>
+                        <InputText id="descripcionManual" class="form-control" @bind-Value="_modeloDetalle.DescripcionManual" />
+                    </div>
+                    <div class="col-4 mb-3">
+                        <label for="precioManual" class="form-label">Precio unitario (RD$)</label>
+                        <InputNumber id="precioManual" class="form-control" @bind-Value="_modeloDetalle.PrecioUnitarioManual" />
+                    </div>
+                </div>
+            }
+
+            <div class="mb-3" style="max-width: 200px;">
+                <label for="cantidad" class="form-label">Cantidad</label>
+                <InputNumber id="cantidad" class="form-control" @bind-Value="_modeloDetalle.Cantidad" />
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@_guardandoDetalle">Agregar detalle</button>
+        </EditForm>
+
+        <hr class="my-4" />
+
+        <div class="row" style="max-width: 700px;">
+            <div class="col-6">
+                <h3 class="h5">Aplicar descuento</h3>
+                <EditForm Model="_modeloDescuento" OnValidSubmit="AplicarDescuentoAsync">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text">RD$</span>
+                        <InputNumber class="form-control" @bind-Value="_modeloDescuento.Monto" />
+                        <button type="submit" class="btn btn-outline-primary" disabled="@_guardandoDescuento">Aplicar</button>
+                    </div>
+                </EditForm>
+            </div>
+            <div class="col-6">
+                <h3 class="h5">Aplicar impuestos</h3>
+                <EditForm Model="_modeloImpuestos" OnValidSubmit="AplicarImpuestosAsync">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text">RD$</span>
+                        <InputNumber class="form-control" @bind-Value="_modeloImpuestos.Monto" />
+                        <button type="submit" class="btn btn-outline-primary" disabled="@_guardandoImpuestos">Aplicar</button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+
+        @if (factura.TipoFactura == TipoFactura.Fiscal)
+        {
+            <hr class="my-4" />
+            @if (factura.NumeroComprobante is null)
+            {
+                <h3 class="h5">Asignar número de comprobante</h3>
+                @if (_secuenciasDisponibles is not null && _secuenciasDisponibles.Count == 0)
+                {
+                    <p><em>No hay secuencias de comprobante activas para esta clínica — <a href="secuencias-comprobante/nueva">autoriza una primero</a>.</em></p>
+                }
+                else
+                {
+                    <EditForm Model="_modeloComprobante" OnValidSubmit="AsignarComprobanteAsync">
+                        <div class="input-group mb-3" style="max-width: 500px;">
+                            <select class="form-select" @bind="_modeloComprobante.SecuenciaComprobanteId">
+                                <option value="">-- Selecciona una secuencia --</option>
+                                @foreach (var secuencia in _secuenciasDisponibles ?? [])
+                                {
+                                    <option value="@secuencia.Id">@secuencia.TipoComprobante (próximo: @(secuencia.SecuenciaActual + 1))</option>
+                                }
+                            </select>
+                            <button type="submit" class="btn btn-outline-primary" disabled="@_guardandoComprobante">Asignar</button>
+                        </div>
+                    </EditForm>
+                }
+            }
+            else
+            {
+                <h3 class="h5">Estado DGII</h3>
+                <EditForm Model="_modeloEstadoDgii" OnValidSubmit="ActualizarEstadoDgiiAsync">
+                    <div class="input-group mb-3" style="max-width: 400px;">
+                        <select class="form-select" @bind="_modeloEstadoDgii.NuevoEstado">
+                            <option value="@EstadoDGII.Pendiente">Pendiente</option>
+                            <option value="@EstadoDGII.Enviado">Enviado</option>
+                            <option value="@EstadoDGII.Aceptado">Aceptado</option>
+                            <option value="@EstadoDGII.Rechazado">Rechazado</option>
+                            <option value="@EstadoDGII.Contingencia">Contingencia</option>
+                        </select>
+                        <button type="submit" class="btn btn-outline-primary" disabled="@_guardandoEstadoDgii">Actualizar</button>
+                    </div>
+                </EditForm>
+                <p><em>Actualización manual — no hay integración automática con el webservice de la DGII todavía.</em></p>
+            }
+        }
+
+        <hr class="my-4" />
+
+        <h3 class="h5">Anular factura</h3>
+        <EditForm Model="_modeloAnular" OnValidSubmit="AnularAsync">
+            <div class="input-group mb-3" style="max-width: 600px;">
+                <input type="text" class="form-control" placeholder="Motivo de anulación" @bind="_modeloAnular.Motivo" />
+                <button type="submit" class="btn btn-outline-danger" disabled="@_guardandoAnular">Anular</button>
+            </div>
+        </EditForm>
+        @if (factura.TotalPagado > 0)
+        {
+            <p><em>Esta factura tiene pagos activos — hay que anularlos primero (Módulo 13, Pagos) antes de poder anular la factura.</em></p>
+        }
+    }
+    else
+    {
+        <div class="alert alert-secondary" style="max-width: 700px;">
+            Factura anulada. Motivo: @factura.MotivoAnulacion
+        </div>
+        <button type="button" class="btn btn-outline-danger" @onclick="EliminarAsync">Eliminar factura</button>
+    }
+
+    <hr class="my-4" />
+    <a class="btn btn-link" href="@($"facturas/{PacienteId}")">Volver a las facturas del paciente</a>
+}
+
+@code {
+    [Parameter]
+    public Guid PacienteId { get; set; }
+
+    [Parameter]
+    public Guid FacturaId { get; set; }
+
+    private FacturaDto? _factura;
+    private bool _noEncontrada;
+    private string? _mensajeError;
+    private string? _mensajeExito;
+
+    private IReadOnlyList<ProcedimientoRealizadoDto>? _procedimientosDisponibles;
+    private IReadOnlyList<SecuenciaComprobanteDto>? _secuenciasDisponibles;
+
+    private readonly ModeloDetalle _modeloDetalle = new();
+    private bool _guardandoDetalle;
+
+    private readonly ModeloMonto _modeloDescuento = new();
+    private bool _guardandoDescuento;
+
+    private readonly ModeloMonto _modeloImpuestos = new();
+    private bool _guardandoImpuestos;
+
+    private readonly ModeloComprobante _modeloComprobante = new();
+    private bool _guardandoComprobante;
+
+    private readonly ModeloEstadoDgii _modeloEstadoDgii = new();
+    private bool _guardandoEstadoDgii;
+
+    private readonly ModeloAnular _modeloAnular = new();
+    private bool _guardandoAnular;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _factura = await FacturaService.ObtenerAsync(FacturaId);
+        if (_factura is null || _factura.PacienteId != PacienteId)
+        {
+            _noEncontrada = true;
+            return;
+        }
+
+        var todosLosProcedimientos = await ProcedimientoRealizadoService.ListarPorPacienteAsync(PacienteId);
+        var yaFacturados = _factura.Detalles
+            .Where(d => d.ProcedimientoRealizadoId is not null)
+            .Select(d => d.ProcedimientoRealizadoId!.Value)
+            .ToHashSet();
+        // Los ya incluidos EN ESTA MISMA factura no deben volver a ofrecerse; los de otras
+        // facturas activas los descarta el propio servicio al agregar (ver
+        // FacturaService.AgregarDetalleAsync) — aquí solo evitamos duplicarlo en la lista visible.
+        _procedimientosDisponibles = todosLosProcedimientos.Where(p => !yaFacturados.Contains(p.Id)).ToList();
+
+        if (_factura.TipoFactura == TipoFactura.Fiscal && _factura.NumeroComprobante is null)
+        {
+            var todasLasSecuencias = await SecuenciaComprobanteService.ListarAsync();
+            _secuenciasDisponibles = todasLasSecuencias.Where(s => s.ClinicaId == _factura.ClinicaId && s.Activo).ToList();
+        }
+    }
+
+    private async Task AgregarDetalleAsync()
+    {
+        _guardandoDetalle = true;
+        _mensajeError = null;
+        _mensajeExito = null;
+
+        Guid? procedimientoId = null;
+        if (_modeloDetalle.OrigenEsProcedimiento)
+        {
+            if (!Guid.TryParse(_modeloDetalle.ProcedimientoRealizadoId, out var idProcedimiento))
+            {
+                _mensajeError = "Selecciona un procedimiento.";
+                _guardandoDetalle = false;
+                return;
+            }
+            procedimientoId = idProcedimiento;
+        }
+
+        var resultado = await FacturaService.AgregarDetalleAsync(FacturaId, new AgregarDetalleFacturaRequest(
+            procedimientoId, _modeloDetalle.OrigenEsProcedimiento ? null : _modeloDetalle.DescripcionManual,
+            _modeloDetalle.Cantidad, _modeloDetalle.OrigenEsProcedimiento ? null : _modeloDetalle.PrecioUnitarioManual));
+
+        _guardandoDetalle = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Detalle agregado.";
+        _modeloDetalle.Reiniciar();
+        await CargarAsync();
+    }
+
+    private async Task AplicarDescuentoAsync()
+    {
+        _guardandoDescuento = true;
+        _mensajeError = null;
+
+        var resultado = await FacturaService.AplicarDescuentoAsync(FacturaId, new AplicarDescuentoFacturaRequest(_modeloDescuento.Monto));
+
+        _guardandoDescuento = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Descuento aplicado.";
+        await CargarAsync();
+    }
+
+    private async Task AplicarImpuestosAsync()
+    {
+        _guardandoImpuestos = true;
+        _mensajeError = null;
+
+        var resultado = await FacturaService.AplicarImpuestosAsync(FacturaId, new AplicarImpuestosFacturaRequest(_modeloImpuestos.Monto));
+
+        _guardandoImpuestos = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Impuestos aplicados.";
+        await CargarAsync();
+    }
+
+    private async Task AsignarComprobanteAsync()
+    {
+        _guardandoComprobante = true;
+        _mensajeError = null;
+
+        if (!Guid.TryParse(_modeloComprobante.SecuenciaComprobanteId, out var secuenciaId))
+        {
+            _mensajeError = "Selecciona una secuencia de comprobante.";
+            _guardandoComprobante = false;
+            return;
+        }
+
+        var resultado = await FacturaService.AsignarNumeroComprobanteAsync(FacturaId, secuenciaId);
+
+        _guardandoComprobante = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Número de comprobante asignado.";
+        await CargarAsync();
+    }
+
+    private async Task ActualizarEstadoDgiiAsync()
+    {
+        _guardandoEstadoDgii = true;
+        _mensajeError = null;
+
+        var resultado = await FacturaService.ActualizarEstadoDGIIAsync(FacturaId, _modeloEstadoDgii.NuevoEstado);
+
+        _guardandoEstadoDgii = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Estado DGII actualizado.";
+        await CargarAsync();
+    }
+
+    private async Task AnularAsync()
+    {
+        _guardandoAnular = true;
+        _mensajeError = null;
+
+        if (string.IsNullOrWhiteSpace(_modeloAnular.Motivo))
+        {
+            _mensajeError = "El motivo de anulación es requerido.";
+            _guardandoAnular = false;
+            return;
+        }
+
+        var resultado = await FacturaService.AnularAsync(FacturaId, _modeloAnular.Motivo);
+
+        _guardandoAnular = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExito = "Factura anulada.";
+        await CargarAsync();
+    }
+
+    private async Task EliminarAsync()
+    {
+        var resultado = await FacturaService.EliminarAsync(FacturaId);
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            return;
+        }
+
+        NavigationManager.NavigateTo($"facturas/{PacienteId}");
+    }
+
+    private static string EtiquetaEstado(EstadoFactura estado) => estado switch
+    {
+        EstadoFactura.Pendiente => "Pendiente",
+        EstadoFactura.Parcial => "Parcialmente pagada",
+        EstadoFactura.Pagada => "Pagada",
+        EstadoFactura.Anulada => "Anulada",
+        _ => estado.ToString()
+    };
+
+    private static string ClaseEstado(EstadoFactura estado) => estado switch
+    {
+        EstadoFactura.Pendiente => "bg-secondary",
+        EstadoFactura.Parcial => "bg-warning text-dark",
+        EstadoFactura.Pagada => "bg-success",
+        EstadoFactura.Anulada => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string EtiquetaEstadoDGII(EstadoDGII estado) => estado switch
+    {
+        EstadoDGII.Pendiente => "Pendiente",
+        EstadoDGII.Enviado => "Enviado",
+        EstadoDGII.Aceptado => "Aceptado",
+        EstadoDGII.Rechazado => "Rechazado",
+        EstadoDGII.Contingencia => "Contingencia",
+        _ => estado.ToString()
+    };
+
+    private sealed class ModeloDetalle
+    {
+        public bool OrigenEsProcedimiento { get; set; } = true;
+        public string ProcedimientoRealizadoId { get; set; } = string.Empty;
+        public string? DescripcionManual { get; set; }
+        public decimal? PrecioUnitarioManual { get; set; }
+        public int Cantidad { get; set; } = 1;
+
+        public void Reiniciar()
+        {
+            ProcedimientoRealizadoId = string.Empty;
+            DescripcionManual = null;
+            PrecioUnitarioManual = null;
+            Cantidad = 1;
+        }
+    }
+
+    private sealed class ModeloMonto
+    {
+        public decimal Monto { get; set; }
+    }
+
+    private sealed class ModeloComprobante
+    {
+        public string SecuenciaComprobanteId { get; set; } = string.Empty;
+    }
+
+    private sealed class ModeloEstadoDgii
+    {
+        public EstadoDGII NuevoEstado { get; set; } = EstadoDGII.Enviado;
+    }
+
+    private sealed class ModeloAnular
+    {
+        public string Motivo { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,94 @@
+@page "/secuencias-comprobante"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Facturacion
+@using ClinicaSaaS.Infrastructure.Identity
+@inject ISecuenciaComprobanteService SecuenciaComprobanteService
+
+<PageTitle>Secuencias de Comprobante</PageTitle>
+
+<h1>Secuencias de Comprobante</h1>
+
+<p>
+    Rangos de NCF/e-CF que la DGII autorizó a la clínica — sin una secuencia activa aquí, ninguna
+    factura Fiscal puede numerarse. Protegido con la Policy <code>Rol:AdminClinica</code> (Fase 5).
+</p>
+
+<a class="btn btn-primary mb-3" href="secuencias-comprobante/nueva">+ Autorizar secuencia</a>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+@if (_secuencias is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_secuencias.Count == 0)
+{
+    <p>No hay secuencias de comprobante autorizadas todavía.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Tipo</th>
+                <th>Rango autorizado</th>
+                <th>Próximo número</th>
+                <th>Vence</th>
+                <th>Clínica</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var secuencia in _secuencias)
+            {
+                <tr>
+                    <td>@secuencia.TipoComprobante @(secuencia.EsElectronico ? "(e-CF)" : "(NCF físico)")</td>
+                    <td>@secuencia.SecuenciaDesde — @secuencia.SecuenciaHasta</td>
+                    <td>@secuencia.SecuenciaActual</td>
+                    <td>@(secuencia.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "Sin vencimiento")</td>
+                    <td>@secuencia.NombreClinica</td>
+                    <td>
+                        @if (secuencia.Activo)
+                        {
+                            <span class="badge bg-success">Activa</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactiva</span>
+                        }
+                    </td>
+                    <td>
+                        @if (secuencia.Activo)
+                        {
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => DesactivarAsync(secuencia.Id)">Desactivar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<SecuenciaComprobanteDto>? _secuencias;
+    private string? _mensajeError;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        _secuencias = await SecuenciaComprobanteService.ListarAsync();
+    }
+
+    private async Task DesactivarAsync(Guid id)
+    {
+        var resultado = await SecuenciaComprobanteService.DesactivarAsync(id);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+}

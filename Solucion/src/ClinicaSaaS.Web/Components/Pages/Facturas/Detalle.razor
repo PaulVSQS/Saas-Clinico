@@ -1,0 +1,112 @@
+@page "/facturas/{PacienteId:guid}"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Facturacion
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Domain.Billing.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+@inject IFacturaService FacturaService
+
+<PageTitle>Facturas del paciente</PageTitle>
+
+@if (_paciente is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese paciente no existe.</p>
+    <a class="btn btn-link" href="facturas">Volver al listado</a>
+}
+else
+{
+    var paciente = _paciente!;
+
+    <h1>Facturas de @paciente.NombreCompleto</h1>
+    <p>@paciente.NombreClinica</p>
+
+    <a class="btn btn-primary mb-3" href="@($"facturas/{PacienteId}/nueva")">+ Nueva factura</a>
+
+    @if (_facturas is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_facturas.Count == 0)
+    {
+        <p>Este paciente no tiene facturas todavía.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Comprobante</th>
+                    <th>Tipo</th>
+                    <th>Fecha</th>
+                    <th>Total</th>
+                    <th>Saldo pendiente</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var factura in _facturas)
+                {
+                    <tr>
+                        <td>@(factura.NumeroComprobante ?? "Sin asignar")</td>
+                        <td>@(factura.TipoFactura == TipoFactura.Fiscal ? "Fiscal" : "Interna")</td>
+                        <td>@factura.FechaEmision.ToString("dd/MM/yyyy")</td>
+                        <td>RD$ @factura.Total.ToString("N2")</td>
+                        <td>RD$ @factura.SaldoPendiente.ToString("N2")</td>
+                        <td>
+                            <span class="badge @ClaseEstado(factura.Estado)">@EtiquetaEstado(factura.Estado)</span>
+                        </td>
+                        <td><a href="@($"facturas/{PacienteId}/{factura.Id}")">Ver</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <a class="btn btn-link" href="facturas">Volver al listado de pacientes</a>
+}
+
+@code {
+    [Parameter]
+    public Guid PacienteId { get; set; }
+
+    private PacienteDto? _paciente;
+    private bool _noEncontrado;
+    private IReadOnlyList<FacturaDto>? _facturas;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _paciente = await PacienteService.ObtenerAsync(PacienteId);
+        if (_paciente is null)
+        {
+            _noEncontrado = true;
+            return;
+        }
+
+        _facturas = await FacturaService.ListarPorPacienteAsync(PacienteId);
+    }
+
+    private static string EtiquetaEstado(EstadoFactura estado) => estado switch
+    {
+        EstadoFactura.Pendiente => "Pendiente",
+        EstadoFactura.Parcial => "Parcialmente pagada",
+        EstadoFactura.Pagada => "Pagada",
+        EstadoFactura.Anulada => "Anulada",
+        _ => estado.ToString()
+    };
+
+    private static string ClaseEstado(EstadoFactura estado) => estado switch
+    {
+        EstadoFactura.Pendiente => "bg-secondary",
+        EstadoFactura.Parcial => "bg-warning text-dark",
+        EstadoFactura.Pagada => "bg-success",
+        EstadoFactura.Anulada => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

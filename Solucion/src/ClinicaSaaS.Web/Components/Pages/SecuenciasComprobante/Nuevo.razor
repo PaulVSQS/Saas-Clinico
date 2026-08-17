@@ -1,0 +1,120 @@
+@page "/secuencias-comprobante/nueva"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Clinicas
+@using ClinicaSaaS.Application.Common.Interfaces
+@using ClinicaSaaS.Application.Facturacion
+@using ClinicaSaaS.Infrastructure.Identity
+@inject ISecuenciaComprobanteService SecuenciaComprobanteService
+@inject IClinicaService ClinicaService
+@inject ITenantContext TenantContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Autorizar secuencia de comprobante</PageTitle>
+
+<h1>Autorizar secuencia de comprobante</h1>
+
+@if (_mensajeError is not null)
+{
+    <div class="alert alert-danger" role="alert">@_mensajeError</div>
+}
+
+<EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+    @if (TenantContext.ClinicaId is null)
+    {
+        @if (_clinicas is null)
+        {
+            <p><em>Cargando...</em></p>
+        }
+        else
+        {
+            <div class="mb-3" style="max-width: 500px;">
+                <label for="clinica" class="form-label">Clínica</label>
+                <InputSelect id="clinica" class="form-select" @bind-Value="_modelo.ClinicaId">
+                    <option value="">-- Selecciona una clínica --</option>
+                    @foreach (var clinica in _clinicas)
+                    {
+                        <option value="@clinica.Id">@clinica.NombreComercial</option>
+                    }
+                </InputSelect>
+            </div>
+        }
+    }
+
+    <div class="mb-3" style="max-width: 500px;">
+        <label for="tipoComprobante" class="form-label">Tipo de comprobante</label>
+        <InputText id="tipoComprobante" class="form-control" @bind-Value="_modelo.TipoComprobante" placeholder="Ej. B01, B02, E31..." />
+        <div class="form-text">El código que aparece en la autorización de la DGII (ej. B01 = Crédito Fiscal, B02 = Consumo).</div>
+    </div>
+
+    <div class="row" style="max-width: 500px;">
+        <div class="col mb-3">
+            <label for="secuenciaDesde" class="form-label">Secuencia desde</label>
+            <InputNumber id="secuenciaDesde" class="form-control" @bind-Value="_modelo.SecuenciaDesde" />
+        </div>
+        <div class="col mb-3">
+            <label for="secuenciaHasta" class="form-label">Secuencia hasta</label>
+            <InputNumber id="secuenciaHasta" class="form-control" @bind-Value="_modelo.SecuenciaHasta" />
+        </div>
+    </div>
+
+    <div class="mb-3" style="max-width: 300px;">
+        <label for="fechaVencimiento" class="form-label">Fecha de vencimiento (opcional)</label>
+        <InputDate id="fechaVencimiento" class="form-control" @bind-Value="_modelo.FechaVencimiento" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@_guardando">Autorizar</button>
+    <a class="btn btn-link" href="secuencias-comprobante">Cancelar</a>
+</EditForm>
+
+@code {
+    private IReadOnlyList<ClinicaDto>? _clinicas;
+    private readonly ModeloNuevaSecuencia _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TenantContext.ClinicaId is null)
+            _clinicas = await ClinicaService.ListarAsync();
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        Guid clinicaId;
+        if (TenantContext.ClinicaId is Guid clinicaActiva)
+        {
+            clinicaId = clinicaActiva;
+        }
+        else if (!Guid.TryParse(_modelo.ClinicaId, out clinicaId))
+        {
+            _mensajeError = "Selecciona una clínica.";
+            _guardando = false;
+            return;
+        }
+
+        var resultado = await SecuenciaComprobanteService.AutorizarAsync(new AutorizarSecuenciaComprobanteRequest(
+            clinicaId, _modelo.TipoComprobante, _modelo.SecuenciaDesde, _modelo.SecuenciaHasta, _modelo.FechaVencimiento));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo("secuencias-comprobante");
+    }
+
+    private sealed class ModeloNuevaSecuencia
+    {
+        public string ClinicaId { get; set; } = string.Empty;
+        public string TipoComprobante { get; set; } = string.Empty;
+        public long SecuenciaDesde { get; set; } = 1;
+        public long SecuenciaHasta { get; set; } = 1000;
+        public DateOnly? FechaVencimiento { get; set; }
+    }
+}

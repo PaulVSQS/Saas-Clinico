@@ -1,0 +1,89 @@
+@page "/facturas/{PacienteId:guid}/nueva"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Facturacion
+@using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Domain.Billing.Enums
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IPacienteService PacienteService
+@inject IFacturaService FacturaService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nueva factura</PageTitle>
+
+@if (_paciente is null && !_noEncontrado)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (_noEncontrado)
+{
+    <p role="alert">Ese paciente no existe.</p>
+    <a class="btn btn-link" href="facturas">Volver al listado</a>
+}
+else
+{
+    var paciente = _paciente!;
+
+    <h1>Nueva factura</h1>
+    <p>@paciente.NombreCompleto — @paciente.NombreClinica</p>
+
+    @if (_mensajeError is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeError</div>
+    }
+
+    <EditForm Model="_modelo" OnValidSubmit="GuardarAsync">
+        <div class="mb-3" style="max-width: 400px;">
+            <label for="tipoFactura" class="form-label">Tipo de factura</label>
+            <InputSelect id="tipoFactura" class="form-select" @bind-Value="_modelo.TipoFactura">
+                <option value="@TipoFactura.Fiscal">Fiscal (con comprobante DGII)</option>
+                <option value="@TipoFactura.Interna">Interna (sin comprobante fiscal)</option>
+            </InputSelect>
+        </div>
+
+        <p><em>Se emite vacía — los detalles (procedimientos u otros cargos) se agregan en la página de la factura.</em></p>
+
+        <button type="submit" class="btn btn-primary" disabled="@_guardando">Emitir factura</button>
+        <a class="btn btn-link" href="@($"facturas/{PacienteId}")">Cancelar</a>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public Guid PacienteId { get; set; }
+
+    private PacienteDto? _paciente;
+    private bool _noEncontrado;
+    private readonly ModeloNuevaFactura _modelo = new();
+    private string? _mensajeError;
+    private bool _guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _paciente = await PacienteService.ObtenerAsync(PacienteId);
+        if (_paciente is null)
+            _noEncontrado = true;
+    }
+
+    private async Task GuardarAsync()
+    {
+        _guardando = true;
+        _mensajeError = null;
+
+        var resultado = await FacturaService.EmitirAsync(new EmitirFacturaRequest(PacienteId, _modelo.TipoFactura));
+
+        if (resultado.EsFallido)
+        {
+            _mensajeError = resultado.Error.Descripcion;
+            _guardando = false;
+            return;
+        }
+
+        NavigationManager.NavigateTo($"facturas/{PacienteId}/{resultado.Value}");
+    }
+
+    private sealed class ModeloNuevaFactura
+    {
+        public TipoFactura TipoFactura { get; set; } = TipoFactura.Fiscal;
+    }
+}
