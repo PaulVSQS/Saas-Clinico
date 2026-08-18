@@ -19,8 +19,8 @@ namespace ClinicaSaaS.Application.DependencyInjection;
 /// Punto único de registro de los servicios de Application (Fase 5: IAutenticacionService;
 /// Fase 6: un servicio por módulo de negocio — Clínicas, Usuarios, Empleados, Doctores,
 /// Consultorios, Horarios, Pacientes, Citas, Historia Clínica, Archivos Médicos, Procedimientos,
-/// Facturación, y los que sigan). Mismo patrón que AddInfrastructure()/AddPersistence() —
-/// Program.cs no debe conocer las clases concretas de este proyecto, solo llamar
+/// Facturación, Pagos, y los que sigan). Mismo patrón que AddInfrastructure()/AddPersistence()
+/// — Program.cs no debe conocer las clases concretas de este proyecto, solo llamar
 /// builder.Services.AddApplication().
 /// </summary>
 public static class ApplicationServiceCollectionExtensions
@@ -54,6 +54,8 @@ public static class ApplicationServiceCollectionExtensions
         // Módulo 12 de Fase 6: Facturación
         services.AddScoped<ISecuenciaComprobanteService, SecuenciaComprobanteService>();
         services.AddScoped<IFacturaService, FacturaService>();
+        // Módulo 13 de Fase 6: Pagos
+        services.AddScoped<IPagoService, PagoService>();
         return services;
     }
 }

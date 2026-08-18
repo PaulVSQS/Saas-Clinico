@@ -10,6 +10,7 @@
 @inject IFacturaService FacturaService
 @inject IProcedimientoRealizadoService ProcedimientoRealizadoService
 @inject ISecuenciaComprobanteService SecuenciaComprobanteService
+@inject IPagoService PagoService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Factura</PageTitle>
@@ -89,6 +90,104 @@ else
             </tbody>
         </table>
     }
+
+    <hr class="my-4" />
+
+    <h2 class="h4">Pagos</h2>
+
+    @if (_mensajeErrorPago is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_mensajeErrorPago</div>
+    }
+    @if (_mensajeExitoPago is not null)
+    {
+        <div class="alert alert-success" role="alert">@_mensajeExitoPago</div>
+    }
+
+    @if (_pagos is null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (_pagos.Count == 0)
+    {
+        <p>Esta factura no tiene pagos registrados todavía.</p>
+    }
+    else
+    {
+        <table class="table" style="max-width: 800px;">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Monto</th>
+                    <th>Método</th>
+                    <th>Referencia</th>
+                    <th>Registrado por</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pago in _pagos)
+                {
+                    <tr>
+                        <td>@pago.FechaHora.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>RD$ @pago.Monto.ToString("N2")</td>
+                        <td>@EtiquetaMetodoPago(pago.MetodoPago)</td>
+                        <td>@(pago.Referencia ?? "—")</td>
+                        <td>@pago.NombreRegistradoPor</td>
+                        <td>
+                            @if (pago.EstaAnulado)
+                            {
+                                <span class="badge bg-danger" title="@pago.MotivoAnulacion">Anulado</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">Activo</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!pago.EstaAnulado && !factura.EstaAnulada)
+                            {
+                                <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => AnularPagoAsync(pago.Id)">Anular</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (!factura.EstaAnulada && factura.Estado != EstadoFactura.Pagada)
+    {
+        <h3 class="h5">Registrar pago</h3>
+        <p><em>Corregir un pago mal registrado es anularlo y registrar uno nuevo — nunca se edita un pago existente.</em></p>
+        <EditForm Model="_modeloPago" OnValidSubmit="RegistrarPagoAsync">
+            <div class="row" style="max-width: 700px;">
+                <div class="col-4 mb-3">
+                    <label for="montoPago" class="form-label">Monto (RD$)</label>
+                    <InputNumber id="montoPago" class="form-control" @bind-Value="_modeloPago.Monto" />
+                    <div class="form-text">Saldo pendiente: RD$ @factura.SaldoPendiente.ToString("N2")</div>
+                </div>
+                <div class="col-4 mb-3">
+                    <label for="metodoPago" class="form-label">Método</label>
+                    <InputSelect id="metodoPago" class="form-select" @bind-Value="_modeloPago.MetodoPago">
+                        <option value="@MetodoPago.Efectivo">Efectivo</option>
+                        <option value="@MetodoPago.Tarjeta">Tarjeta</option>
+                        <option value="@MetodoPago.Transferencia">Transferencia</option>
+                        <option value="@MetodoPago.Cheque">Cheque</option>
+                    </InputSelect>
+                </div>
+                <div class="col-4 mb-3">
+                    <label for="referenciaPago" class="form-label">Referencia (opcional)</label>
+                    <InputText id="referenciaPago" class="form-control" @bind-Value="_modeloPago.Referencia" placeholder="Ej. últimos 4 dígitos, # de transferencia" />
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@_guardandoPago">Registrar pago</button>
+        </EditForm>
+    }
+
+    <hr class="my-4" />
 
     @if (!factura.EstaAnulada)
     {
@@ -225,7 +324,7 @@ else
         </EditForm>
         @if (factura.TotalPagado > 0)
         {
-            <p><em>Esta factura tiene pagos activos — hay que anularlos primero (Módulo 13, Pagos) antes de poder anular la factura.</em></p>
+            <p><em>Esta factura tiene pagos activos — anúlalos primero en la sección de Pagos de arriba antes de poder anular la factura.</em></p>
         }
     }
     else
@@ -254,6 +353,7 @@ else
 
     private IReadOnlyList<ProcedimientoRealizadoDto>? _procedimientosDisponibles;
     private IReadOnlyList<SecuenciaComprobanteDto>? _secuenciasDisponibles;
+    private IReadOnlyList<PagoDto>? _pagos;
 
     private readonly ModeloDetalle _modeloDetalle = new();
     private bool _guardandoDetalle;
@@ -272,6 +372,11 @@ else
 
     private readonly ModeloAnular _modeloAnular = new();
     private bool _guardandoAnular;
+
+    private readonly ModeloPago _modeloPago = new();
+    private bool _guardandoPago;
+    private string? _mensajeErrorPago;
+    private string? _mensajeExitoPago;
 
     protected override async Task OnInitializedAsync() => await CargarAsync();
 
@@ -299,6 +404,47 @@ else
             var todasLasSecuencias = await SecuenciaComprobanteService.ListarAsync();
             _secuenciasDisponibles = todasLasSecuencias.Where(s => s.ClinicaId == _factura.ClinicaId && s.Activo).ToList();
         }
+
+        _pagos = await PagoService.ListarPorFacturaAsync(FacturaId);
+    }
+
+    private async Task RegistrarPagoAsync()
+    {
+        _guardandoPago = true;
+        _mensajeErrorPago = null;
+        _mensajeExitoPago = null;
+
+        var resultado = await PagoService.RegistrarAsync(new RegistrarPagoRequest(
+            FacturaId, _modeloPago.Monto, _modeloPago.MetodoPago, _modeloPago.Referencia));
+
+        _guardandoPago = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorPago = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoPago = "Pago registrado.";
+        _modeloPago.Reiniciar();
+        await CargarAsync();
+    }
+
+    private async Task AnularPagoAsync(Guid pagoId)
+    {
+        _mensajeErrorPago = null;
+        _mensajeExitoPago = null;
+
+        var resultado = await PagoService.AnularAsync(FacturaId, pagoId, "Anulado desde la factura");
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorPago = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoPago = "Pago anulado.";
+        await CargarAsync();
     }
 
     private async Task AgregarDetalleAsync()
@@ -485,6 +631,15 @@ else
         _ => estado.ToString()
     };
 
+    private static string EtiquetaMetodoPago(MetodoPago metodo) => metodo switch
+    {
+        MetodoPago.Efectivo => "Efectivo",
+        MetodoPago.Tarjeta => "Tarjeta",
+        MetodoPago.Transferencia => "Transferencia",
+        MetodoPago.Cheque => "Cheque",
+        _ => metodo.ToString()
+    };
+
     private sealed class ModeloDetalle
     {
         public bool OrigenEsProcedimiento { get; set; } = true;
@@ -520,5 +675,20 @@ else
     private sealed class ModeloAnular
     {
         public string Motivo { get; set; } = string.Empty;
+    }
+
+    private sealed class ModeloPago
+    {
+        public decimal Monto { get; set; }
+        public MetodoPago MetodoPago { get; set; } = MetodoPago.Efectivo;
+        public string? Referencia { get; set; }
+
+        public void Reiniciar()
+        {
+            Monto = 0;
+            Referencia = null;
+            // MetodoPago se deja como estaba — es común registrar varios pagos seguidos con el
+            // mismo método (ej. varias cuotas en efectivo).
+        }
     }
 }
