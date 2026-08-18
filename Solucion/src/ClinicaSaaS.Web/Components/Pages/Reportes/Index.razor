@@ -1,0 +1,169 @@
+
+@page "/reportes"
+@attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
+@rendermode InteractiveServer
+@using ClinicaSaaS.Application.Reportes
+@using ClinicaSaaS.Infrastructure.Identity
+@inject IReporteService ReporteService
+
+<PageTitle>Reportes</PageTitle>
+
+<h1>Reportes</h1>
+
+<p>
+    Vistas agregadas de solo lectura sobre lo que ya existe en Facturación, Citas, Procedimientos
+    y Pacientes — protegido con la Policy <code>Rol:AdminClinica</code> (Fase 5).
+</p>
+
+<div class="row align-items-end" style="max-width: 500px;">
+    <div class="col mb-3">
+        <label for="desde" class="form-label">Desde</label>
+        <input type="date" id="desde" class="form-control" value="@_desde.ToString("yyyy-MM-dd")" @onchange="OnDesdeCambiadoAsync" />
+    </div>
+    <div class="col mb-3">
+        <label for="hasta" class="form-label">Hasta</label>
+        <input type="date" id="hasta" class="form-control" value="@_hasta.ToString("yyyy-MM-dd")" @onchange="OnHastaCambiadoAsync" />
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><strong>Ingresos</strong></div>
+            <div class="card-body">
+                @if (_ingresos is null)
+                {
+                    <p><em>Cargando...</em></p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr><th>Total facturado</th><td>RD$ @_ingresos.TotalFacturado.ToString("N2")</td></tr>
+                            <tr><th>Total cobrado</th><td>RD$ @_ingresos.TotalCobrado.ToString("N2")</td></tr>
+                            <tr><th>Saldo pendiente</th><td>RD$ @_ingresos.SaldoPendiente.ToString("N2")</td></tr>
+                            <tr><th>Facturas</th><td>@_ingresos.CantidadFacturas total — @_ingresos.CantidadPagadas pagadas, @_ingresos.CantidadParciales parciales, @_ingresos.CantidadPendientes pendientes, @_ingresos.CantidadAnuladas anuladas</td></tr>
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><strong>Citas</strong></div>
+            <div class="card-body">
+                @if (_citas is null)
+                {
+                    <p><em>Cargando...</em></p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr><th>Total</th><td>@_citas.Total</td></tr>
+                            <tr><th>Programadas</th><td>@_citas.Programadas</td></tr>
+                            <tr><th>Confirmadas</th><td>@_citas.Confirmadas</td></tr>
+                            <tr><th>En proceso</th><td>@_citas.EnProceso</td></tr>
+                            <tr><th>Completadas</th><td>@_citas.Completadas</td></tr>
+                            <tr><th>Canceladas</th><td>@_citas.Canceladas</td></tr>
+                            <tr><th>No asistió</th><td>@_citas.NoAsistio</td></tr>
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><strong>Procedimientos más realizados</strong></div>
+            <div class="card-body">
+                @if (_procedimientos is null)
+                {
+                    <p><em>Cargando...</em></p>
+                }
+                else if (_procedimientos.Count == 0)
+                {
+                    <p class="mb-0">No hay procedimientos registrados en este rango.</p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr><th>Procedimiento</th><th>Cantidad</th><th>Ingreso</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var procedimiento in _procedimientos)
+                            {
+                                <tr>
+                                    <td>@procedimiento.Codigo — @procedimiento.Nombre</td>
+                                    <td>@procedimiento.CantidadRealizada</td>
+                                    <td>RD$ @procedimiento.IngresoTotal.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header"><strong>Pacientes nuevos</strong></div>
+            <div class="card-body">
+                @if (_pacientes is null)
+                {
+                    <p><em>Cargando...</em></p>
+                }
+                else
+                {
+                    <p class="mb-0 h3">@_pacientes.PacientesNuevos</p>
+                    <p class="text-muted mb-0">registrados en el rango seleccionado</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private DateOnly _desde = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+
+    private ReporteIngresosDto? _ingresos;
+    private ReporteCitasDto? _citas;
+    private IReadOnlyList<ReporteProcedimientoDto>? _procedimientos;
+    private ReportePacientesDto? _pacientes;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task OnDesdeCambiadoAsync(ChangeEventArgs e)
+    {
+        if (DateOnly.TryParse(e.Value?.ToString(), out var fecha))
+            _desde = fecha;
+
+        await CargarAsync();
+    }
+
+    private async Task OnHastaCambiadoAsync(ChangeEventArgs e)
+    {
+        if (DateOnly.TryParse(e.Value?.ToString(), out var fecha))
+            _hasta = fecha;
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        var request = new RangoFechasRequest(_desde, _hasta);
+
+        // Secuencial, nunca en paralelo sobre el mismo DbContext — mismo criterio ya establecido
+        // en toda la app (ver comentarios de Task.WhenAll evitado en módulos anteriores).
+        _ingresos = await ReporteService.ObtenerReporteIngresosAsync(request);
+        _citas = await ReporteService.ObtenerReporteCitasAsync(request);
+        _procedimientos = await ReporteService.ObtenerProcedimientosMasRealizadosAsync(request);
+        _pacientes = await ReporteService.ObtenerReportePacientesNuevosAsync(request);
+    }
+}
