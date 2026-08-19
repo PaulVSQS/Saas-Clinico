@@ -121,3 +121,90 @@
 - Cambié a la rama `documentacion` (`git switch documentacion`).
 - Restauré `PROMPT_HISTORY.md` con todo su historial en la rama `documentacion` listo para ser commiteado y pusheado.
 ---
+
+---
+### Prompt Record
+**User Prompt:**
+> en esta ruta C:\Users\paule\OneDrive\Escritorio\TRABAJO\Saas Clinico
+> 
+> hay un archivo llamado fase6-modulo6-horarios
+> 
+> ahi estan los cambio a integrar el proyecto de la fase 6 modulo 6 siguelo al pie de la letra integra esos cambios a mi proyecto
+
+**Action Taken / Agent Summary:**
+- Analicé el archivo `fase6-modulo6-horarios.md` con las especificaciones del Módulo 6 (Horarios).
+- Creé `IHorarioService.cs` y `HorarioService.cs` en `ClinicaSaaS.Application/Horarios/` operando a través de `IRepositorio<Doctor>` y respetando los límites del Aggregate Root `Doctor`.
+- Añadí la validación en Application para asegurar que el consultorio pertenezca a la misma clínica del doctor.
+- Registré `IHorarioService -> HorarioService` en `ApplicationServiceCollectionExtensions.cs`.
+- Creé las páginas de UI Blazor `Index.razor`, `Detalle.razor` y `Nuevo.razor` en `ClinicaSaaS.Web/Components/Pages/Horarios/` con protección de política `AdminClinica` y navegación por doctor.
+- Actualicé `NavMenu.razor` agregando el enlace hacia la gestión de Horarios.
+- Ejecuté `dotnet build` y `dotnet test` confirmando compilación correcta con 0 errores y todos los tests pasando.
+---
+
+
+### Prompt Record
+**User Prompt:**
+> en esta ruta C:\Users\paule\OneDrive\Escritorio\TRABAJO\Saas Clinico
+> 
+> hay un archivo llamado 
+> 
+> fase6-modulo6-horarios-v2
+> 
+> contiene una actulizacion del modulo 6 de la fase 6 lo que haras es aplicar esos cambios paso por paso a este proyecto justo como te dice ahi
+
+**Action Taken / Agent Summary:**
+- Analicé el documento `fase6-modulo6-horarios-v2.md` con las especificaciones de ampliación del Módulo 6 (Horarios).
+- Actualicé `HorarioDoctor.cs` en `Domain/Personal/Entities/` incorporando `Reactivar()`, `ActualizarDatos(...)` y `SeSolapaConPropuesta(...)`.
+- Actualicé `Doctor.cs` en `Domain/Personal/` implementando `AgregarHorarioEnVariosDias(...)`, `ActualizarHorario(...)`, `ReactivarHorario(...)` y `EliminarHorario(...)` (DELETE físico con requerimiento de inactividad previa).
+- Actualicé `IHorarioService.cs` y `HorarioService.cs` en `Application/Horarios/` con soporte para creación por lote de días, edición completa, reactivación con revalidación y eliminación.
+- Actualicé `Detalle.razor` en `Web/Components/Pages/Horarios/` añadiendo los botones de Editar, Reactivar y Eliminar.
+- Actualicé `Nuevo.razor` en `Web/Components/Pages/Horarios/` transformando el selector de días en checkboxes para selección múltiple con creación todo-o-nada.
+- Creé la página `Editar.razor` en `Web/Components/Pages/Horarios/` para edición completa de bloques de horario individuales.
+- Agregué tests unitarios en `ClinicaSaaS.UnitTests/DoctorHorariosTests.cs` cubriendo creación por lote, solapamiento, reactivación y eliminación de horarios.
+- Ejecuté `dotnet build` y `dotnet test` confirmando compilación correcta (0 errores) y 100% de tests superados.
+---
+### Prompt Record
+**User Prompt:**
+> en esta ruta C:\Users\paule\OneDrive\Escritorio\TRABAJO\Saas Clinico
+> 
+> hay un archivo llamado 
+> 
+> fase6-modulo6-horarios-fix-ownedtypes
+> 
+> contiene una actulizacion del modulo 6 de la fase 6 lo que haras es aplicar esos cambios paso por paso a este proyecto justo como te dice ahi
+
+**Action Taken / Agent Summary:**
+- Analicé la causa raíz identificada en `fase6-modulo6-horarios-fix-ownedtypes.md` (rastreo por referencia de Owned Types `OwnsOne` en EF Core cuando se reutilizaba la misma instancia para múltiples entidades `HorarioDoctor`).
+- Agregué el método interno `Clonar()` a `BloqueHorario.cs` y `PeriodoVigencia.cs` en `Domain/Personal/ValueObjects/`.
+- Actualicé `Doctor.AgregarHorarioEnVariosDias` en `Domain/Personal/Doctor.cs` para invocar `bloque.Clonar()` y `vigencia.Clonar()` para cada nuevo `HorarioDoctor` del lote.
+- Actualicé las pruebas unitarias en `DoctorHorariosTests.cs` para validar que las entidades creadas no comparten la misma referencia de los Value Objects.
+- Ejecuté `dotnet build` y `dotnet test` confirmando 0 errores de compilación y 100% de tests aprobados.
+---
+### Prompt Record
+**User Prompt:**
+> en esta ruta C:\Users\paule\OneDrive\Escritorio\TRABAJO\Saas Clinico
+> 
+> hay un archivo llamado 
+> 
+> fix-horarios-repositorio-doctor
+> 
+> contiene un fix del modulo 6 de la fase 6 lo que haras es aplicar esos cambios paso por paso a este proyecto justo como te dice ahi
+
+**Action Taken / Agent Summary:**
+- Analicé la causa raíz en `fix-horarios-repositorio-doctor.md`: `RepositorioBase<TEntity>.ObtenerPorIdAsync` no incluía la colección hija `Horarios` de `Doctor`, provocando que en circuitos nuevos de Blazor Server se cargara `Horarios` vacío.
+- Creé `RepositorioDoctor.cs` en `Persistence/Repositories/` heredando de `RepositorioBase<Doctor>` y sobrescribiendo `ObtenerPorIdAsync` con `.Include(d => d.Horarios)`.
+- Actualicé `PersistenceServiceCollectionExtensions.cs` registrando `services.AddScoped<IRepositorio<Doctor>, RepositorioDoctor>()` para que tome precedencia en el contenedor de DI de .NET.
+- Ejecuté `dotnet build` y `dotnet test` confirmando 0 errores de compilación y 100% de tests aprobados.
+---
+
+---
+### Prompt Record
+**User Prompt:**
+> quiero que me cambies a mi rama documentacion pero hay un problema tengo un archivo llamado PROMPT_HISTORY.md que tiene cambios pero no puedo pushearlo en Dev eso debe ir en documentacion mas sin perder nada lo que quiero que me cambies a documentacion sin que se pierda nada
+
+**Action Taken / Agent Summary:**
+- Us� `git stash` para guardar los cambios de `PROMPT_HISTORY.md` de forma segura en `Dev`.
+- Cambi� a la rama `documentacion` con `git checkout documentacion`.
+- Apliqu� el stash y resolv� el conflicto de merge manualmente preservando el historial completo de ambas ramas (sin perder ninguna entrada).
+- El archivo `PROMPT_HISTORY.md` queda listo en `documentacion` con todo el historial combinado para hacer commit y push.
+---
