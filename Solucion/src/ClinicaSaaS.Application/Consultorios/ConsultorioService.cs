@@ -9,7 +9,8 @@ public sealed class ConsultorioService(
     IRepositorio<Consultorio> repositorio,
     IUnitOfWork unitOfWork,
     IClinicaService clinicaService,
-    ITenantContext tenantContext) : IConsultorioService
+    ITenantContext tenantContext,
+    ICurrentUserContext currentUserContext) : IConsultorioService
 {
     public async Task<IReadOnlyList<ConsultorioDto>> ListarAsync(CancellationToken cancellationToken = default)
     {
@@ -91,6 +92,20 @@ public sealed class ConsultorioService(
             return ConsultorioNoEncontrado;
 
         var resultado = consultorio.Reactivar();
+        if (resultado.EsFallido)
+            return resultado;
+
+        await unitOfWork.GuardarCambiosAsync(cancellationToken);
+        return Result.Exitoso();
+    }
+
+    public async Task<Result> EliminarAsync(Guid consultorioId, CancellationToken cancellationToken = default)
+    {
+        var consultorio = await repositorio.ObtenerPorIdAsync(consultorioId, cancellationToken);
+        if (consultorio is null)
+            return ConsultorioNoEncontrado;
+
+        var resultado = consultorio.Eliminar(currentUserContext.UsuarioId ?? Guid.Empty, DateTime.UtcNow);
         if (resultado.EsFallido)
             return resultado;
 

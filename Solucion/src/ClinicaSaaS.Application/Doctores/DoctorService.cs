@@ -11,7 +11,8 @@ public sealed class DoctorService(
     IUnitOfWork unitOfWork,
     IUsuarioService usuarioService,
     IClinicaService clinicaService,
-    ITenantContext tenantContext) : IDoctorService
+    ITenantContext tenantContext,
+    ICurrentUserContext currentUserContext) : IDoctorService
 {
     public async Task<IReadOnlyList<DoctorDto>> ListarAsync(CancellationToken cancellationToken = default)
     {
@@ -101,6 +102,20 @@ public sealed class DoctorService(
             return DoctorNoEncontrado;
 
         var resultado = doctor.Reactivar();
+        if (resultado.EsFallido)
+            return resultado;
+
+        await unitOfWork.GuardarCambiosAsync(cancellationToken);
+        return Result.Exitoso();
+    }
+
+    public async Task<Result> EliminarAsync(Guid doctorId, CancellationToken cancellationToken = default)
+    {
+        var doctor = await repositorio.ObtenerPorIdAsync(doctorId, cancellationToken);
+        if (doctor is null)
+            return DoctorNoEncontrado;
+
+        var resultado = doctor.Eliminar(currentUserContext.UsuarioId ?? Guid.Empty, DateTime.UtcNow);
         if (resultado.EsFallido)
             return resultado;
 

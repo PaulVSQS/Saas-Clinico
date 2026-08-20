@@ -47,4 +47,7 @@ public interface IEmpleadoService
     Task<Result> DesactivarAsync(Guid empleadoId, CancellationToken cancellationToken = default);
 
     Task<Result> ReactivarAsync(Guid empleadoId, CancellationToken cancellationToken = default);
+
+    /// <summary>Exige que el empleado esté inactivo primero — mismo criterio que Empleado.Eliminar (Domain).</summary>
+    Task<Result> EliminarAsync(Guid empleadoId, CancellationToken cancellationToken = default);
 }

@@ -47,4 +47,7 @@ public interface IDoctorService
     Task<Result> DesactivarAsync(Guid doctorId, CancellationToken cancellationToken = default);
 
     Task<Result> ReactivarAsync(Guid doctorId, CancellationToken cancellationToken = default);
+
+    /// <summary>Exige que el doctor esté inactivo primero — mismo criterio que Doctor.Eliminar (Domain).</summary>
+    Task<Result> EliminarAsync(Guid doctorId, CancellationToken cancellationToken = default);
 }

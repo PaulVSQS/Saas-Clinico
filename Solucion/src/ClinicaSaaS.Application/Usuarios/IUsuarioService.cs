@@ -56,6 +56,9 @@ public interface IUsuarioService
 
     Task<Result> ReactivarAsync(Guid usuarioId, CancellationToken cancellationToken = default);
 
+    /// <summary>Exige que el usuario esté inactivo primero — mismo criterio que Usuario.Eliminar (Domain).</summary>
+    Task<Result> EliminarAsync(Guid usuarioId, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Devuelve las membresías activas del usuario (UsuarioClinicaRol no eliminados).
     /// El filtro de tenant del DbContext cubre el aislamiento cuando hay un ClinicaId activo;

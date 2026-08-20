@@ -45,4 +45,7 @@ public interface IConsultorioService
     Task<Result> DesactivarAsync(Guid consultorioId, CancellationToken cancellationToken = default);
 
     Task<Result> ReactivarAsync(Guid consultorioId, CancellationToken cancellationToken = default);
+
+    /// <summary>Exige que el consultorio esté inactivo primero — mismo criterio que Consultorio.Eliminar (Domain).</summary>
+    Task<Result> EliminarAsync(Guid consultorioId, CancellationToken cancellationToken = default);
 }

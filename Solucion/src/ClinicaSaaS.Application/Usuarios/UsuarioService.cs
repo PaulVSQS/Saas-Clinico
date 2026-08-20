@@ -107,6 +107,20 @@ public sealed class UsuarioService(
         return Result.Exitoso();
     }
 
+    public async Task<Result> EliminarAsync(Guid usuarioId, CancellationToken cancellationToken = default)
+    {
+        var usuario = await repositorioUsuario.ObtenerPorIdAsync(usuarioId, cancellationToken);
+        if (usuario is null)
+            return UsuarioNoEncontrado;
+
+        var resultado = usuario.Eliminar(currentUserContext.UsuarioId ?? Guid.Empty, DateTime.UtcNow);
+        if (resultado.EsFallido)
+            return resultado;
+
+        await unitOfWork.GuardarCambiosAsync(cancellationToken);
+        return Result.Exitoso();
+    }
+
     public async Task<IReadOnlyList<UsuarioClinicaRolDto>> ListarMembresiasAsync(
         Guid usuarioId, CancellationToken cancellationToken = default)
     {

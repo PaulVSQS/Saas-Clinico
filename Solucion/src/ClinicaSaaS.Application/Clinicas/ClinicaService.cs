@@ -6,7 +6,7 @@ using ClinicaSaaS.SharedKernel.Results;
 
 namespace ClinicaSaaS.Application.Clinicas;
 
-public sealed class ClinicaService(IRepositorio<Clinica> repositorio, IUnitOfWork unitOfWork) : IClinicaService
+public sealed class ClinicaService(IRepositorio<Clinica> repositorio, IUnitOfWork unitOfWork, ICurrentUserContext currentUserContext) : IClinicaService
 {
     public async Task<IReadOnlyList<ClinicaDto>> ListarAsync(CancellationToken cancellationToken = default)
     {
@@ -112,6 +112,20 @@ public sealed class ClinicaService(IRepositorio<Clinica> repositorio, IUnitOfWor
             return ClinicaNoEncontrada;
 
         var resultado = clinica.Reactivar();
+        if (resultado.EsFallido)
+            return resultado;
+
+        await unitOfWork.GuardarCambiosAsync(cancellationToken);
+        return Result.Exitoso();
+    }
+
+    public async Task<Result> EliminarAsync(Guid clinicaId, CancellationToken cancellationToken = default)
+    {
+        var clinica = await repositorio.ObtenerPorIdAsync(clinicaId, cancellationToken);
+        if (clinica is null)
+            return ClinicaNoEncontrada;
+
+        var resultado = clinica.Eliminar(currentUserContext.UsuarioId ?? Guid.Empty, DateTime.UtcNow);
         if (resultado.EsFallido)
             return resultado;
 

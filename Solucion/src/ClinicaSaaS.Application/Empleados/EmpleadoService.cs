@@ -11,7 +11,8 @@ public sealed class EmpleadoService(
     IUnitOfWork unitOfWork,
     IUsuarioService usuarioService,
     IClinicaService clinicaService,
-    ITenantContext tenantContext) : IEmpleadoService
+    ITenantContext tenantContext,
+    ICurrentUserContext currentUserContext) : IEmpleadoService
 {
     public async Task<IReadOnlyList<EmpleadoDto>> ListarAsync(CancellationToken cancellationToken = default)
     {
@@ -106,6 +107,20 @@ public sealed class EmpleadoService(
             return EmpleadoNoEncontrado;
 
         var resultado = empleado.Reactivar();
+        if (resultado.EsFallido)
+            return resultado;
+
+        await unitOfWork.GuardarCambiosAsync(cancellationToken);
+        return Result.Exitoso();
+    }
+
+    public async Task<Result> EliminarAsync(Guid empleadoId, CancellationToken cancellationToken = default)
+    {
+        var empleado = await repositorio.ObtenerPorIdAsync(empleadoId, cancellationToken);
+        if (empleado is null)
+            return EmpleadoNoEncontrado;
+
+        var resultado = empleado.Eliminar(currentUserContext.UsuarioId ?? Guid.Empty, DateTime.UtcNow);
         if (resultado.EsFallido)
             return resultado;
 

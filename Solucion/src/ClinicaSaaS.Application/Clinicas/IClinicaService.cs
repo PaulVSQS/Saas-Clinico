@@ -48,4 +48,6 @@ public interface IClinicaService
     Task<Result> DesactivarAsync(Guid clinicaId, CancellationToken cancellationToken = default);
 
     Task<Result> ReactivarAsync(Guid clinicaId, CancellationToken cancellationToken = default);
+
+    Task<Result> EliminarAsync(Guid clinicaId, CancellationToken cancellationToken = default);
 }

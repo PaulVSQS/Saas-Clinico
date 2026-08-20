@@ -69,6 +69,8 @@ else
                         else
                         {
                             <button type="button" class="btn btn-link p-0" @onclick="() => ReactivarAsync(consultorio.Id)">Reactivar</button>
+                            @:&nbsp;·&nbsp;
+                            <button type="button" class="btn btn-link p-0 text-danger" @onclick="() => EliminarAsync(consultorio.Id)">Eliminar</button>
                         }
                     </td>
                 </tr>
@@ -98,6 +100,13 @@ else
     private async Task ReactivarAsync(Guid consultorioId)
     {
         var resultado = await ConsultorioService.ReactivarAsync(consultorioId);
+        _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
+        await CargarAsync();
+    }
+
+    private async Task EliminarAsync(Guid consultorioId)
+    {
+        var resultado = await ConsultorioService.EliminarAsync(consultorioId);
         _mensajeError = resultado.EsFallido ? resultado.Error.Descripcion : null;
         await CargarAsync();
     }
