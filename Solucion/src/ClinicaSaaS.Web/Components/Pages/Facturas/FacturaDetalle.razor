@@ -1,7 +1,9 @@
 @page "/facturas/{PacienteId:guid}/{FacturaId:guid}"
 @attribute [Authorize(Policy = ClinicaSaaSAuthorizationPolicies.AdminClinica)]
 @rendermode InteractiveServer
+@using ClinicaSaaS.Application.Doctores
 @using ClinicaSaaS.Application.Facturacion
+@using ClinicaSaaS.Application.HistorialesClinicos
 @using ClinicaSaaS.Application.Pacientes
 @using ClinicaSaaS.Application.Procedimientos
 @using ClinicaSaaS.Domain.Billing.Enums
@@ -9,6 +11,9 @@
 @inject IPacienteService PacienteService
 @inject IFacturaService FacturaService
 @inject IProcedimientoRealizadoService ProcedimientoRealizadoService
+@inject IProcedimientoCatalogoService ProcedimientoCatalogoService
+@inject IDoctorService DoctorService
+@inject IHistorialClinicoService HistorialClinicoService
 @inject ISecuenciaComprobanteService SecuenciaComprobanteService
 @inject IPagoService PagoService
 @inject NavigationManager NavigationManager
@@ -191,6 +196,62 @@ else
 
     @if (!factura.EstaAnulada)
     {
+        <h3 class="h5">Asignar otro procedimiento a este paciente</h3>
+        <p><em>Para el caso de varios procedimientos el mismo día (ej. una limpieza y una extracción) — se asigna aquí y aparece abajo en el dropdown para agregarlo a esta misma factura.</em></p>
+
+        @if (_mensajeErrorAsignar is not null)
+        {
+            <div class="alert alert-danger" role="alert">@_mensajeErrorAsignar</div>
+        }
+        @if (_mensajeExitoAsignar is not null)
+        {
+            <div class="alert alert-success" role="alert">@_mensajeExitoAsignar</div>
+        }
+
+        @if (_catalogoActivo is not null && _catalogoActivo.Count == 0)
+        {
+            <p><em>La clínica no tiene procedimientos activos en su catálogo — <a href="procedimientos">agrega uno primero</a>.</em></p>
+        }
+        else if (_doctores is not null && _doctores.Count == 0)
+        {
+            <p><em>La clínica no tiene doctores activos — <a href="doctores">agrega uno primero</a>.</em></p>
+        }
+        else
+        {
+            <EditForm Model="_modeloAsignar" OnValidSubmit="AsignarProcedimientoAsync">
+                <div class="row" style="max-width: 800px;">
+                    <div class="col-4 mb-3">
+                        <label for="asignarDoctor" class="form-label">Doctor</label>
+                        <InputSelect id="asignarDoctor" class="form-select" @bind-Value="_modeloAsignar.DoctorId">
+                            <option value="">-- Selecciona --</option>
+                            @foreach (var doctor in _doctores ?? [])
+                            {
+                                <option value="@doctor.Id">@doctor.NombreUsuario</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-4 mb-3">
+                        <label for="asignarCatalogo" class="form-label">Procedimiento</label>
+                        <InputSelect id="asignarCatalogo" class="form-select" @bind-Value="_modeloAsignar.ProcedimientoCatalogoId">
+                            <option value="">-- Selecciona --</option>
+                            @foreach (var procedimiento in _catalogoActivo ?? [])
+                            {
+                                <option value="@procedimiento.Id">@procedimiento.Codigo — @procedimiento.Nombre (RD$ @procedimiento.PrecioBase.ToString("N2"))</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-4 mb-3">
+                        <label for="asignarPieza" class="form-label">Pieza dental (opcional)</label>
+                        <InputText id="asignarPieza" class="form-control" @bind-Value="_modeloAsignar.PiezaDental" placeholder="Ej. 16 (notación FDI)" />
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-outline-primary" disabled="@_guardandoAsignar">Asignar procedimiento</button>
+            </EditForm>
+        }
+
+        <hr class="my-4" />
+
         <h3 class="h5">Agregar detalle</h3>
         <EditForm Model="_modeloDetalle" OnValidSubmit="AgregarDetalleAsync">
             <div class="mb-3" style="max-width: 500px;">
@@ -218,6 +279,10 @@ else
                     @if (_procedimientosDisponibles is not null && _procedimientosDisponibles.Count == 0)
                     {
                         <div class="form-text">No hay procedimientos de este paciente pendientes de facturar.</div>
+                    }
+                    else if (_procedimientosDisponibles is not null && _procedimientosDisponibles.Count > 0)
+                    {
+                        <div class="form-text">Precargado con el procedimiento pendiente del paciente — puedes cambiarlo si aplica otro.</div>
                     }
                 </div>
             }
@@ -355,6 +420,13 @@ else
     private IReadOnlyList<SecuenciaComprobanteDto>? _secuenciasDisponibles;
     private IReadOnlyList<PagoDto>? _pagos;
 
+    private IReadOnlyList<DoctorDto>? _doctores;
+    private IReadOnlyList<ProcedimientoCatalogoDto>? _catalogoActivo;
+    private readonly ModeloAsignarProcedimiento _modeloAsignar = new();
+    private bool _guardandoAsignar;
+    private string? _mensajeErrorAsignar;
+    private string? _mensajeExitoAsignar;
+
     private readonly ModeloDetalle _modeloDetalle = new();
     private bool _guardandoDetalle;
 
@@ -397,13 +469,34 @@ else
         // Los ya incluidos EN ESTA MISMA factura no deben volver a ofrecerse; los de otras
         // facturas activas los descarta el propio servicio al agregar (ver
         // FacturaService.AgregarDetalleAsync) — aquí solo evitamos duplicarlo en la lista visible.
-        _procedimientosDisponibles = todosLosProcedimientos.Where(p => !yaFacturados.Contains(p.Id)).ToList();
+        // Se ordena por fecha (más antiguo primero) para que la preselección de abajo sea
+        // predecible: el procedimiento que lleva más tiempo pendiente es el que se sugiere.
+        _procedimientosDisponibles = todosLosProcedimientos
+            .Where(p => !yaFacturados.Contains(p.Id))
+            .OrderBy(p => p.Fecha)
+            .ToList();
+
+        // Precarga automática: si el paciente ya tiene un procedimiento asignado y pendiente de
+        // facturar (Módulo de Pacientes → "Procedimientos"), se preselecciona aquí — la
+        // secretaria no tiene que volver a buscarlo, solo confirmar o cambiarlo si hace falta.
+        // El "== string.Empty" evita pisar una selección que el usuario ya haya hecho a mano
+        // (por ejemplo si CargarAsync() se repite al registrar un pago).
+        if (_modeloDetalle.ProcedimientoRealizadoId == string.Empty && _procedimientosDisponibles.Count > 0)
+        {
+            _modeloDetalle.ProcedimientoRealizadoId = _procedimientosDisponibles[0].Id.ToString();
+        }
 
         if (_factura.TipoFactura == TipoFactura.Fiscal && _factura.NumeroComprobante is null)
         {
             var todasLasSecuencias = await SecuenciaComprobanteService.ListarAsync();
             _secuenciasDisponibles = todasLasSecuencias.Where(s => s.ClinicaId == _factura.ClinicaId && s.Activo).ToList();
         }
+
+        var todosLosDoctores = await DoctorService.ListarAsync();
+        _doctores = todosLosDoctores.Where(d => d.ClinicaId == _factura.ClinicaId && d.Activo).ToList();
+
+        var todoElCatalogo = await ProcedimientoCatalogoService.ListarAsync();
+        _catalogoActivo = todoElCatalogo.Where(p => p.ClinicaId == _factura.ClinicaId && p.Activo).ToList();
 
         _pagos = await PagoService.ListarPorFacturaAsync(FacturaId);
     }
@@ -444,6 +537,63 @@ else
         }
 
         _mensajeExitoPago = "Pago anulado.";
+        await CargarAsync();
+    }
+
+    /// <summary>
+    /// Mismo patrón que Pacientes/Editar.razor: ProcedimientoRealizadoService exige una entrada
+    /// activa de HistorialClinico para poder colgar el procedimiento. Se crea aquí una entrada
+    /// mínima ("Registro inicial") de forma perezosa si el paciente no tiene ninguna todavía —
+    /// sin tocar dominio. Se ofrece aquí (y no solo en Pacientes) para cubrir el caso de varios
+    /// procedimientos el mismo día sin obligar a salir de la factura.
+    /// </summary>
+    private async Task AsignarProcedimientoAsync()
+    {
+        _guardandoAsignar = true;
+        _mensajeErrorAsignar = null;
+        _mensajeExitoAsignar = null;
+
+        if (!Guid.TryParse(_modeloAsignar.DoctorId, out var doctorId))
+        {
+            _mensajeErrorAsignar = "Selecciona un doctor.";
+            _guardandoAsignar = false;
+            return;
+        }
+
+        if (!Guid.TryParse(_modeloAsignar.ProcedimientoCatalogoId, out var procedimientoCatalogoId))
+        {
+            _mensajeErrorAsignar = "Selecciona un procedimiento.";
+            _guardandoAsignar = false;
+            return;
+        }
+
+        var entradas = await HistorialClinicoService.ListarEntradasPorPacienteAsync(PacienteId);
+        if (!entradas.Any(e => e.EsVersionActual))
+        {
+            var creacionEntrada = await HistorialClinicoService.AgregarEntradaAsync(new AgregarEntradaHistorialClinicoRequest(
+                PacienteId, doctorId, null, "Registro inicial", null, null, null, null));
+
+            if (creacionEntrada.EsFallido)
+            {
+                _mensajeErrorAsignar = creacionEntrada.Error.Descripcion;
+                _guardandoAsignar = false;
+                return;
+            }
+        }
+
+        var resultado = await ProcedimientoRealizadoService.RegistrarAsync(new RegistrarProcedimientoRealizadoRequest(
+            PacienteId, procedimientoCatalogoId, doctorId, _modeloAsignar.PiezaDental, null, null));
+
+        _guardandoAsignar = false;
+
+        if (resultado.EsFallido)
+        {
+            _mensajeErrorAsignar = resultado.Error.Descripcion;
+            return;
+        }
+
+        _mensajeExitoAsignar = "Procedimiento asignado — ya aparece abajo, en el dropdown de \"Agregar detalle\".";
+        _modeloAsignar.Reiniciar();
         await CargarAsync();
     }
 
@@ -689,6 +839,21 @@ else
             Referencia = null;
             // MetodoPago se deja como estaba — es común registrar varios pagos seguidos con el
             // mismo método (ej. varias cuotas en efectivo).
+        }
+    }
+
+    private sealed class ModeloAsignarProcedimiento
+    {
+        public string DoctorId { get; set; } = string.Empty;
+        public string ProcedimientoCatalogoId { get; set; } = string.Empty;
+        public string? PiezaDental { get; set; }
+
+        public void Reiniciar()
+        {
+            PiezaDental = null;
+            // DoctorId y ProcedimientoCatalogoId se dejan como estaban — igual criterio que en
+            // Pacientes/Editar.razor: es común asignar varios procedimientos seguidos del mismo
+            // doctor/tipo.
         }
     }
 }

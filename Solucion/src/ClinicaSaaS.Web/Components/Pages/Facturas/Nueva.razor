@@ -3,10 +3,12 @@
 @rendermode InteractiveServer
 @using ClinicaSaaS.Application.Facturacion
 @using ClinicaSaaS.Application.Pacientes
+@using ClinicaSaaS.Application.Procedimientos
 @using ClinicaSaaS.Domain.Billing.Enums
 @using ClinicaSaaS.Infrastructure.Identity
 @inject IPacienteService PacienteService
 @inject IFacturaService FacturaService
+@inject IProcedimientoRealizadoService ProcedimientoRealizadoService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Nueva factura</PageTitle>
@@ -41,7 +43,7 @@ else
             </InputSelect>
         </div>
 
-        <p><em>Se emite vacía — los detalles (procedimientos u otros cargos) se agregan en la página de la factura.</em></p>
+        <p><em>Si el paciente tiene procedimientos pendientes de facturar, se agregan aquí mismo como detalle automáticamente — puedes ajustar cantidad/precio o agregar cargos manuales después, en la página de la factura.</em></p>
 
         <button type="submit" class="btn btn-primary" disabled="@_guardando">Emitir factura</button>
         <a class="btn btn-link" href="@($"facturas/{PacienteId}")">Cancelar</a>
@@ -79,7 +81,24 @@ else
             return;
         }
 
-        NavigationManager.NavigateTo($"facturas/{PacienteId}/{resultado.Value}");
+        var facturaId = resultado.Value;
+
+        // Precarga automática: la factura recién emitida está vacía por diseño (dominio), pero
+        // si el paciente ya tiene procedimientos asignados (Pacientes → Editar → Procedimientos)
+        // se agregan aquí mismo como detalle — así el Total/Subtotal ya vienen cargados en la
+        // página de la factura y la secretaria solo tiene que registrar el pago, sin repetir el
+        // paso manual de "Agregar detalle" para algo que el sistema ya sabe. Se ignoran los que
+        // fallen (ej. un procedimiento que ya se facturó en otra factura del paciente —
+        // FacturaService.AgregarDetalleAsync ya lo rechaza) — esto es una comodidad, no debe
+        // bloquear la emisión de la factura si algo no aplica.
+        var procedimientosDelPaciente = await ProcedimientoRealizadoService.ListarPorPacienteAsync(PacienteId);
+        foreach (var procedimiento in procedimientosDelPaciente)
+        {
+            await FacturaService.AgregarDetalleAsync(facturaId, new AgregarDetalleFacturaRequest(
+                procedimiento.Id, null, 1, null));
+        }
+
+        NavigationManager.NavigateTo($"facturas/{PacienteId}/{facturaId}");
     }
 
     private sealed class ModeloNuevaFactura
