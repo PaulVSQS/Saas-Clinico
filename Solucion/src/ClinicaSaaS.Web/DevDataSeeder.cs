@@ -8,9 +8,14 @@ namespace ClinicaSaaS.Web;
 /// <summary>
 /// SOLO PARA DESARROLLO — Program.cs únicamente la invoca cuando
 /// <c>app.Environment.IsDevelopment()</c> es verdadero. Crea un único Usuario SuperAdmin SaaS
-/// de prueba la primera vez que se corre la app localmente y todavía no existe ningún Usuario
-/// en la base de datos, para poder probar el login de Fase 5 de inmediato sin esperar a que
-/// Fase 6 construya el módulo real de alta de usuarios.
+/// de prueba en cada arranque local si todavía no existe ninguno, para poder probar el login de
+/// Fase 5 de inmediato sin esperar a que Fase 6 construya el módulo real de alta de usuarios.
+///
+/// El check es "¿existe un SuperAdmin?", no "¿existe algún Usuario?" — a propósito: en pruebas
+/// es normal terminar con Empleados/Doctores/Pacientes ya creados (con sus propios Usuario) y
+/// haber eliminado el superadmin de prueba aparte (ej. para probar el flujo de Eliminar). Si el
+/// check fuera "algún Usuario", el seeder nunca volvería a correr en ese escenario y el login
+/// quedaría bloqueado sin ningún superadmin para recuperarlo — justo el caso que motivó este ajuste.
 ///
 /// BÓRRESE ESTE ARCHIVO (y su llamada en Program.cs) en cuanto exista un flujo real de registro
 /// de usuarios — no está pensado para sobrevivir más allá de esa fase.
@@ -24,8 +29,11 @@ internal static class DevDataSeeder
     {
         var repositorioUsuarios = servicios.GetRequiredService<IRepositorio<Usuario>>();
 
-        var yaHayUsuarios = await repositorioUsuarios.Consultar().AnyAsync();
-        if (yaHayUsuarios)
+        // Antes: repositorioUsuarios.Consultar().AnyAsync() — bloqueaba el reseed apenas
+        // existiera CUALQUIER usuario (Empleados/Doctores ya usan uno cada uno). Ahora se
+        // filtra por EsSuperAdminSaaS, que es lo que este seeder realmente garantiza.
+        var yaHaySuperAdmin = await repositorioUsuarios.Consultar().AnyAsync(u => u.EsSuperAdminSaaS);
+        if (yaHaySuperAdmin)
             return;
 
         var passwordHasher = servicios.GetRequiredService<IPasswordHasher>();
